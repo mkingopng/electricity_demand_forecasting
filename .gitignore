@@ -162,3 +162,8 @@ cython_debug/
 /data/NSW/temperature_nsw.csv
 /data/NSW/totaldemand_nsw.csv
 /data/NSW/forecastdemand_nsw_csv.zip
+/data/Australia/a/
+/data/Australia/a/forecastdemand_vic.csv
+/data/Australia/b/
+/data/Australia/c/
+/data/Australia/d/
