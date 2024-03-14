@@ -9,24 +9,25 @@ Complete the information below regarding your group.
 ## Group and project information
 
 ### Group members and zIDs
-- Member 1 (zID1) - Group leader
-- Member 2 (zID2) - role
-- Member 3 (zID3) - role
-- Member 4 (zID4) - role
-- Member 5 (zID5) - role
+- Noel Singh (zID1) - role tbc
+- Reuben Bowell (zID2) - role tbc
+- William Stephan (zID3) - role tbc
+- Michael Kingston (zID5372750) - role tbc
 
 ### Brief project description
-
-Describe your project in one paragraph.
+to improve the accuracy of short-term electricity demand forecasting by:
+- supplemental data containing explanatory variables in addition to temperature
+- up-sampling the data
+- testing a range of model architectures, ranging from statistical methods 
+  like ARIMA, to Bayesian approaches, to machine learning models like 
+  Random Forest and GBDT.
 
 ## Repository structure
-
 The repository has the following folder structure:
-
-- agendas: agendas for each weekly meeting with lecturers (left 24h before the next meeting)
-- checklists: teamwork checklist or a link to an account in a project task management tool
-- data: datasets for analysis
-- gantt_chart: Gantt chart or a link to an account in a project task management tool
-- minutes: minutes for each meeting (left not more than 24h after the corresponding meeting)
-- report: RMarkdown or Jupyter notebook report in progress
-- src: source code
+- **agendas**: agendas for each weekly meeting with lecturers (left 24h before the next meeting)
+- **checklists**: teamwork checklist or a link to an account in a project task management tool
+- **data**: datasets for analysis
+- **gantt_chart**: Gantt chart or a link to an account in a project task management tool
+- **minutes**: minutes for each meeting (left not more than 24h after the corresponding meeting)
+- **report**: RMarkdown or Jupyter notebook report in progress
+- **src**: source code
