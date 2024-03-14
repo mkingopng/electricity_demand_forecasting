@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "team-0"
+version = "0.1.0"
+description = ""
+authors = ["Michael Kingston <71872141+mkingopng@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+jupyter = "^1.0.0"
+pandas = "^2.2.1"
+statsmodels = "^0.14.1"
+scikit-learn = "^1.4.1.post1"
+scikit-time = "^0.0.0"
+matplotlib = "^3.8.3"
+seaborn = "^0.13.2"
+plotly = "^5.19.0"
+streamlit = "^1.32.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
