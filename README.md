@@ -17,7 +17,8 @@ Complete the information below regarding your group.
 ### Brief project description
 to improve the accuracy of short-term electricity demand forecasting by:
 - supplemental data containing explanatory variables in addition to temperature
-- up-sampling the data
+- up-sampling the existing dataset
+- define a naive baseline model, and establish historic forecast accuracy
 - testing a range of model architectures, ranging from statistical methods 
   like ARIMA, to Bayesian approaches, to machine learning models like 
   Random Forest and GBDT.
