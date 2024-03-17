@@ -23,11 +23,8 @@ import glob
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 
-
 today = date.today()
-
 data_directory = './../data'
-
 log_filename = f'./../logs/log_{today}.log'
 
 logging.basicConfig(
@@ -39,41 +36,19 @@ logging.basicConfig(
 
 url_dict_map = {
     # OPERATIONAL DEMAND
-    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/ACTUAL_HH/': 'data/operational_demand_actual_hh',  # actual current 30 min
-    'http://nemweb.com.au/Reports/Archive/Operational_Demand/ACTUAL_HH/': 'data/operational_demand_actual_hh',  # actual archive 30 min
-    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/ACTUAL_5MIN/': 'data/public_actual_operational_demand_five_min',  # actual current 5 min
+    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/ACTUAL_HH/': f'{data_directory}/operational_demand_actual_hh',  # actual current 30 min
+    'http://nemweb.com.au/Reports/Archive/Operational_Demand/ACTUAL_HH/': f'{data_directory}/operational_demand_actual_hh',  # actual archive 30 min
+    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/ACTUAL_5MIN/': f'{data_directory}/public_actual_operational_demand_five_min',  # actual current 5 min
 
-    # 'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/ACTUAL_DAILY/': 'data/operational_demand_actual_daily',  # actual current daily
-    # 'http://nemweb.com.au/Reports/Archive/Operational_Demand/ACTUAL_DAILY/': 'data/operational_demand_actual_daily', # actual archive daily
-    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/FORECAST_HH/': 'data/operational_demand_forecast_hh',  # forecast current 30 min
-    'http://nemweb.com.au/Reports/Archive/Operational_Demand/FORECAST_HH/': 'data/operational_demand_forecast_hh',  # forecast archive 30 min
-    # ROOFTOP PV, ACTUAL AND FORECAST, CURRENT AND ARCHIVE
-    # 'https://nemweb.com.au/Reports/Current/ROOFTOP_PV/ACTUAL/': 'data/rooftop_pv_actual',  # rooftop pv actual current
-    # 'https://nemweb.com.au/Reports/Archive/ROOFTOP_PV/ACTUAL/': 'data/rooftop_pv_actual',  # rooftop pv actual archive
-    # 'https://nemweb.com.au/Reports/Current/ROOFTOP_PV/FORECAST/': 'data/rooftop_pv_forecast',  # rooftop pv forecast current
-    # 'https://nemweb.com.au/Reports/Archive/ROOFTOP_PV/FORECAST/': 'data/rooftop_pv_forecast',  # rooftop pv forecast archive
-    # DISPATCH SCADA
-    # 'https://nemweb.com.au/Reports/Current/Dispatch_SCADA/': 'data/dispatch_SCADA',  # dispatch SCADA current
-    # 'https://nemweb.com.au/Reports/Archive/Dispatch_SCADA/': 'data/dispatch_SCADA',  # dispatch SCADA archive
+    # FORECAST DEMAND
+    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/FORECAST_HH/': f'{data_directory}/operational_demand_forecast_hh',  # forecast current 30 min
+    'http://nemweb.com.au/Reports/Archive/Operational_Demand/FORECAST_HH/': f'{data_directory}/operational_demand_forecast_hh',  # forecast archive 30 min
+
     # PUBLIC PRICES
-    'https://nemweb.com.au/Reports/Current/Public_Prices/': 'data/public_prices',  # public prices current
-    'https://nemweb.com.au/Reports/Archive/Public_Prices/': 'data/public_prices',  # public prices archive
-    # VWAFCAS prices
-    # 'https://nemweb.com.au/Reports/Current/Vwa_Fcas_Prices/': 'data/vwa_fcas_prices',  # vwa fcas prices current
-    # DISPATCH PRICES PRE AP
-    # 'https://nemweb.com.au/Reports/Current/Dispatchprices_PRE_AP/': 'data/dispatch_prices_pre_ap',  # dispatch prices current
-    # 'https://nemweb.com.au/Reports/Archive/Dispatchprices_PRE_AP/': 'data/dispatch_prices_pre_ap',  # dispatch prices archive
-    # ADJUSTED PRICE REPORTS
-    # 'https://nemweb.com.au/Reports/Current/Adjusted_Prices_Reports/': 'data/adjusted_prices_reports',  # adjusted prices reports current
-    # 'https://nemweb.com.au/Reports/Archive/Adjusted_Prices_Reports/': 'data/adjusted_prices_reports',  # adjusted prices reports archive
-    # TRADING CUMULATIVE PRICE
-    # 'https://nemweb.com.au/Reports/Current/Trading_Cumulative_Price/': 'data/trading_cumulative_price',  # trading cumulative price current
-    # 'https://nemweb.com.au/Reports/Archive/Trading_Cumulative_Price/': 'data/trading_cumulative_price',  # trading cumulative price archive
-    # MKTSUSP PRICING
-    # 'https://nemweb.com.au/Reports/Current/Mktsusp_Pricing/': 'data/mktsusp_pricing',  # mktsusp pricing current
+    'https://nemweb.com.au/Reports/Current/Public_Prices/': f'{data_directory}/public_prices',  # public prices current
+    'https://nemweb.com.au/Reports/Archive/Public_Prices/': f'{data_directory}/public_prices',  # public prices archive
+
 }
-# trading, settlements, prices, pre-dispatch, PASA, other, network, NEMDE,
-# gas supply hub, dispatch, demand and forecasts, bids
 
 
 def download_zip_files(url_directory_map):
@@ -149,28 +124,36 @@ def organize_csv_files(source_dir):
 
 def remove_empty_dirs(dir_path):
     """
-    Remove all empty subdirectories in the given directory
-    :param dir_path: The root directory path to search for empty subdirectories
-    :return: None
+    Remove empty directories
+    :param dir_path:
     """
     for root, dirs, files in os.walk(dir_path, topdown=False):
         for name in dirs:
-            try:
-                os.rmdir(os.path.join(root, name))
-                logging.info(f'Removed empty directory: {os.path.join(root, name)}')
-            except OSError as e:
-                logging.error(f'Error removing directory {os.path.join(root, name)}: {e}')
+            dir_path = os.path.join(root, name)
+            if not os.listdir(dir_path):  # Checks if the directory is empty
+                try:
+                    os.rmdir(dir_path)
+                    logging.info(f"Removed empty directory: {dir_path}")
+                except OSError as e:
+                    logging.error(f"Error removing directory {dir_path}: {e}")
+            else:
+                logging.info(f"Directory not empty: {dir_path}")
 
 
 def consolidate_csv_in_subdirs(data_directory):
     """
-    Process and consolidate CSV files in each subdirectory of the data directory.
+    Process and consolidate CSV files in each subdir of the data directory.
+    :param data_directory:
+    :return:
     """
     for subdir, _, _ in os.walk(data_directory):
         if subdir == data_directory:
             continue
-        csv_pattern = os.path.join(subdir, "*.CSV")
+        csv_pattern = os.path.join(subdir, "*.[cC][sS][vV]")
         csv_files = glob.glob(csv_pattern)
+        if not csv_files:
+            logging.info(f"No CSV files found in {subdir}, skipping...")
+            continue
         dfs = []
         for filename in tqdm(csv_files, desc=f"Processing {os.path.basename(subdir)}"):
             try:
@@ -183,6 +166,10 @@ def consolidate_csv_in_subdirs(data_directory):
             consolidated_csv_path = os.path.join(data_directory, f"{os.path.basename(subdir)}_consolidated.csv")
             combined_df.to_csv(consolidated_csv_path, index=False)
             logging.info(f"Saved consolidated CSV for {os.path.basename(subdir)} to {consolidated_csv_path}")
+            # delete individual .csv files
+            for filename in csv_files:
+                os.remove(filename)
+                logging.info(f"Deleted {filename}")
         else:
             logging.info(f"No CSV files found in {subdir}")
         gc.collect()
@@ -190,14 +177,10 @@ def consolidate_csv_in_subdirs(data_directory):
 
 def write_df_to_postgres(df, table_name, connection_string):
     """
-    Write a DataFrame to a PostgreSQL database.
+    Write df to PostgreSQL db.
+    :param connection_string:
     :param df:
     :param table_name:
-    :param db_name:
-    :param db_user:
-    :param db_pass:
-    :param db_host:
-    :param db_port:
     :return:
     """
     engine = create_engine(connection_string)
@@ -224,9 +207,16 @@ def write_consolidated_csv_to_db(data_directory, connection_string):
 if __name__ == "__main__":
     load_dotenv()
     download_zip_files(url_dict_map)
-    # todo: need to clarify data URLs based on what we're using
     extract_zip_files(url_dict_map)
     organize_csv_files(data_directory)
     remove_empty_dirs(data_directory)
     consolidate_csv_in_subdirs(data_directory)
-    # todo: need to improve cleaning, file handling & IO
+    remove_empty_dirs(data_directory)
+    # TODO:
+    #  improve cleaning, file handling & IO,
+    #  confirm that the scraped data is the same as the project data +
+    #  there has to be some use for the 5min data, logging, tests, postgres
+    #  database
+    # TODO: need to clarify what additional data we're going ot use and
+    #  therefore what additional data URLs based on what we're using
+    # todo: join current and archive data.

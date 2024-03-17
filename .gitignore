@@ -168,3 +168,7 @@ cython_debug/
 /data/Australia/c/
 /data/Australia/d/
 /src/data/
+/data/operational_demand_actual_hh_consolidated.csv
+/data/operational_demand_forecast_hh_consolidated.csv
+/data/public_actual_operational_demand_five_min_consolidated.csv
+/data/public_prices_consolidated.csv
