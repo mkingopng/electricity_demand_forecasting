@@ -166,7 +166,6 @@ def consolidate_csv_in_subdirs(data_directory):
             consolidated_csv_path = os.path.join(data_directory, f"{os.path.basename(subdir)}_consolidated.csv")
             combined_df.to_csv(consolidated_csv_path, index=False)
             logging.info(f"Saved consolidated CSV for {os.path.basename(subdir)} to {consolidated_csv_path}")
-            # delete individual .csv files
             for filename in csv_files:
                 os.remove(filename)
                 logging.info(f"Deleted {filename}")
@@ -212,11 +211,4 @@ if __name__ == "__main__":
     remove_empty_dirs(data_directory)
     consolidate_csv_in_subdirs(data_directory)
     remove_empty_dirs(data_directory)
-    # TODO:
-    #  improve cleaning, file handling & IO,
-    #  confirm that the scraped data is the same as the project data +
-    #  there has to be some use for the 5min data, logging, tests, postgres
-    #  database
-    # TODO: need to clarify what additional data we're going ot use and
-    #  therefore what additional data URLs based on what we're using
-    # todo: join current and archive data.
+
