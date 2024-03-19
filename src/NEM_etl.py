@@ -15,7 +15,6 @@ import zipfile
 from zipfile import BadZipFile
 from datetime import date
 import shutil
-import time
 import re
 import pandas as pd
 import gc
@@ -36,18 +35,34 @@ logging.basicConfig(
 
 url_dict_map = {
     # OPERATIONAL DEMAND
-    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/ACTUAL_HH/': f'{data_directory}/operational_demand_actual_hh',  # actual current 30 min
-    'http://nemweb.com.au/Reports/Archive/Operational_Demand/ACTUAL_HH/': f'{data_directory}/operational_demand_actual_hh',  # actual archive 30 min
-    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/ACTUAL_5MIN/': f'{data_directory}/public_actual_operational_demand_five_min',  # actual current 5 min
+    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/ACTUAL_HH/':
+        f'{data_directory}/operational_demand_actual_hh',  # current 30 min
+    'http://nemweb.com.au/Reports/Archive/Operational_Demand/ACTUAL_HH/':
+        f'{data_directory}/operational_demand_actual_hh',  # archive 30 min
+    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/ACTUAL_5MIN/':
+        f'{data_directory}/public_actual_operational_demand_five_min',  # actual current 5 min
 
     # FORECAST DEMAND
-    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/FORECAST_HH/': f'{data_directory}/operational_demand_forecast_hh',  # forecast current 30 min
-    'http://nemweb.com.au/Reports/Archive/Operational_Demand/FORECAST_HH/': f'{data_directory}/operational_demand_forecast_hh',  # forecast archive 30 min
+    'http://nemweb.com.au/Reports/CURRENT/Operational_Demand/FORECAST_HH/':
+        f'{data_directory}/operational_demand_forecast_hh',  # forecast 30 min
+    'http://nemweb.com.au/Reports/Archive/Operational_Demand/FORECAST_HH/':
+        f'{data_directory}/operational_demand_forecast_hh',  # forecast 30 min
 
     # PUBLIC PRICES
-    'https://nemweb.com.au/Reports/Current/Public_Prices/': f'{data_directory}/public_prices',  # public prices current
-    'https://nemweb.com.au/Reports/Archive/Public_Prices/': f'{data_directory}/public_prices',  # public prices archive
+    'https://nemweb.com.au/Reports/Current/Public_Prices/':
+        f'{data_directory}/public_prices',  # public prices current
+    'https://nemweb.com.au/Reports/Archive/Public_Prices/':
+        f'{data_directory}/public_prices',  # public prices archive
 
+    # ROOFTOP PV, ACTUAL AND FORECAST, CURRENT AND ARCHIVE
+    'https://nemweb.com.au/Reports/Current/ROOFTOP_PV/ACTUAL/':
+        f'{data_directory}/rooftop_pv_actual',
+    'https://nemweb.com.au/Reports/Archive/ROOFTOP_PV/ACTUAL/':
+        f'{data_directory}/rooftop_pv_actual',
+    'https://nemweb.com.au/Reports/Current/ROOFTOP_PV/FORECAST/':
+        f'{data_directory}/rooftop_pv_forecast',
+    'https://nemweb.com.au/Reports/Archive/ROOFTOP_PV/FORECAST/':
+        f'{data_directory}/rooftop_pv_forecast',
 }
 
 
@@ -65,7 +80,6 @@ def download_zip_files(url_directory_map):
         soup = BeautifulSoup(response.text, 'html.parser')
         zip_links = [link for link in soup.find_all('a') if link.get('href')
                      and link.get('href').endswith('.zip')]
-
         for link in tqdm(zip_links, desc=f"Downloading from {url}"):
             href = link.get('href')
             download_url = urljoin(url, href)
@@ -109,7 +123,7 @@ def organize_csv_files(source_dir):
     """
     for filename in os.listdir(source_dir):
         if filename.endswith('.csv'):
-            match = re.match(r'(.*?)(?:_\d{8})', filename)
+            match = re.match(r'(.*?)_\d{8}', filename)
             if match:
                 dir_name = match.group(1).lower().replace(" ", "_")
                 target_dir_path = os.path.join(source_dir, dir_name)
@@ -212,3 +226,5 @@ if __name__ == "__main__":
     consolidate_csv_in_subdirs(data_directory)
     remove_empty_dirs(data_directory)
 
+# todo: exclude project files,
+#  add additional information for variables,
