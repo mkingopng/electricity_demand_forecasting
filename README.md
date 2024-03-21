@@ -1,4 +1,4 @@
-# Welcome to ZZSC9020 GitHub repository for group [GROUP-NAME]
+# Welcome to ZZSC9020 GitHub repository for group Team-O
 
 This GitHub repository is the main point of access for students and lecturers of the ZZSC9020 capstone course. 
 
@@ -10,14 +10,17 @@ Complete the information below regarding your group.
 
 ### Group members and zIDs
 - Noel Singh (zID1) - role tbc
-- Reuben Bowell (zID2) - role tbc
-- William Stephan (zID3) - role tbc
-- Michael Kingston (zID5372750) - role tbc
+- Reuben Bowell (z5382909) - role tbc
+- William Stephan (z3404800) - role tbc
+- Michael Kingston (z5372750) - role tbc
+- unsw-ZZSC9020-Project-Plan-GroupO
+- https://unsw.sharepoint.com/:w:/r/sites/ZZSC9020DataScienceProject-H2-2024-GroupO/Shared%20Documents/Group%20O/unsw-ZZSC9020-Project-Plan-GroupO.docx?d=w2e293bed027b489cb0cce3d5173d94c5&csf=1&web=1&e=lJC4DN
 
 ### Brief project description
 to improve the accuracy of short-term electricity demand forecasting by:
 - supplemental data containing explanatory variables in addition to temperature
-- up-sampling the data
+- up-sampling the existing dataset
+- define a naive baseline model, and establish historic forecast accuracy
 - testing a range of model architectures, ranging from statistical methods 
   like ARIMA, to Bayesian approaches, to machine learning models like 
   Random Forest and GBDT.
@@ -31,3 +34,35 @@ The repository has the following folder structure:
 - **minutes**: minutes for each meeting (left not more than 24h after the corresponding meeting)
 - **report**: RMarkdown or Jupyter notebook report in progress
 - **src**: source code
+
+
+## Poetry
+[Poetry](https://python-poetry.org/docs/) is a Python dependency manager. 
+It takes advantage of PEP518, which introduces pyproject.toml as a new way to 
+specify build requirements. The goal was to make the replicability of 
+developers' environments easy to replicate, sync and maintain across team 
+members.
+
+## Basic Use:
+1. install poetry on your computer, by following the instructions [here](https://github.com/python-poetry/install.python-poetry.org)
+
+2. open a terminal and run:
+  ```bash
+  cd path/to/project/team-O
+  poetry init
+  ```
+  poetry will then configure your environment based on the pyproject.toml in 
+  the repository.
+
+3. to install a new package run:
+   ```bash
+   poetry add <package-name>
+   ```
+   
+4. to update your envirnnment to sync with repository, or to update a 
+   dependency to the latest version run:
+
+   ```bash
+   poetry update
+   ```
+
