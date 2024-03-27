@@ -198,11 +198,8 @@ def consolidate_csv_in_subdirs(data_directory):
         if dfs:
             combined_df = pd.concat(dfs, ignore_index=True)
             consolidated_csv_path = os.path.join(data_directory, f"{os.path.basename(subdir)}_consolidated.csv")
-            combined_df.to_parquet(
-                consolidated_csv_path,
-                index=False,
-                engine='pyarrow',
-                compression='snappy'
+            combined_df.to_csv(
+                consolidated_csv_path
             )
             logging.info(f"Saved consolidated DF for {os.path.basename(subdir)} to {consolidated_csv_path}")
             for filename in csv_files:
@@ -252,4 +249,3 @@ if __name__ == "__main__":
     remove_empty_dirs(data_directory)
 
 # todo: exclude project files,
-#  add additional information for variables,
