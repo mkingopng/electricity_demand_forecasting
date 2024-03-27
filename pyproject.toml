@@ -7,8 +7,8 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-jupyter = "^1.0.0"
 pandas = "^2.2.1"
+polars = "^0.20.16"
 statsmodels = "^0.14.1"
 scikit-learn = "^1.4.1.post1"
 scikit-time = "^0.0.0"
@@ -17,14 +17,16 @@ seaborn = "^0.13.2"
 plotly = "^5.19.0"
 tqdm = "^4.66.2"
 
+jupyter = "^1.0.0"
 jupyter-contrib-nbextensions = "^0.7.0"
 jupyterlab = "^4.1.4"
 jupyter-book = "^1.0.0"
+
 nbsphinx = "^0.9.3"
-
-
 python-dotenv = "^1.0.1"
-
+pytest = "^8.1.1"
+black = "^24.3.0"
+ruff = "^0.3.4"
 
 [build-system]
 requires = ["poetry-core"]

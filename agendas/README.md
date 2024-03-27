@@ -1,1 +1,17 @@
 agendas: agendas for each weekly meeting with lecturers (left 24h before the next meeting)
+
+2024-03-27 questions (mk):
+- think i I've dealt with time stamp issues and missing values. Pls confirm?
+- I'm struggling to find HH temperature data to augment the project data we 
+  have. can we know where it came from?
+- We're looking at the additional vaiables we can collect and add to the 
+  model to improve it.
+- questions around HH samples and 5 min samples for demand
+- I'm having trouble getting the basic time series decomposition to work. I'm 
+  not getting errors but it just doesn't look right
+- How to determine the current forecast accuracy?
+- Looking at a simple heatmap, it doesn't look like temperature is a very 
+  powerful factor. But its universally agreed to be the most powerful 
+  factor. I don't really understand the dissonance
+- what are lagged features and how do we create them?
+- 

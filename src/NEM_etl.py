@@ -54,15 +54,35 @@ url_dict_map = {
     'https://nemweb.com.au/Reports/Archive/Public_Prices/':
         f'{data_directory}/public_prices',  # public prices archive
 
+###############
+
     # ROOFTOP PV, ACTUAL AND FORECAST, CURRENT AND ARCHIVE
-    'https://nemweb.com.au/Reports/Current/ROOFTOP_PV/ACTUAL/':
-        f'{data_directory}/rooftop_pv_actual',
-    'https://nemweb.com.au/Reports/Archive/ROOFTOP_PV/ACTUAL/':
-        f'{data_directory}/rooftop_pv_actual',
-    'https://nemweb.com.au/Reports/Current/ROOFTOP_PV/FORECAST/':
-        f'{data_directory}/rooftop_pv_forecast',
-    'https://nemweb.com.au/Reports/Archive/ROOFTOP_PV/FORECAST/':
-        f'{data_directory}/rooftop_pv_forecast',
+    # 'https://nemweb.com.au/Reports/Current/ROOFTOP_PV/ACTUAL/':
+    #     f'{data_directory}/rooftop_pv_actual',
+    # 'https://nemweb.com.au/Reports/Archive/ROOFTOP_PV/ACTUAL/':
+    #     f'{data_directory}/rooftop_pv_actual',
+    # 'https://nemweb.com.au/Reports/Current/ROOFTOP_PV/FORECAST/':
+    #     f'{data_directory}/rooftop_pv_forecast',
+    # 'https://nemweb.com.au/Reports/Archive/ROOFTOP_PV/FORECAST/':
+    #     f'{data_directory}/rooftop_pv_forecast',
+
+    # Hist Demand
+    # 'https://nemweb.com.au/Reports/Current/HistDemand/':
+    #     f'{data_directory}/hist_demand',
+    # 'https://nemweb.com.au/Reports/ARCHIVE/HistDemand/':
+    #     f'{data_directory}/hist_demand',
+
+    # seven day outlook full
+    # 'https://nemweb.com.au/Reports/Current/SEVENDAYOUTLOOK_FULL/':
+    #     f'{data_directory}/seven_day_outlook_full',
+    # 'https://nemweb.com.au/Reports/ARCHIVE/SEVENDAYOUTLOOK_FULL/':
+    #     f'{data_directory}/seven_day_outlook_full',
+
+    # DISPATCH scada
+    # 'https://nemweb.com.au/Reports/Current/Dispatch_SCADA/':
+    #     f'{data_directory}/dispatch_scada',
+    # 'https://nemweb.com.au/Reports/ARCHIVE/Dispatch_SCADA/':
+    #     f'{data_directory}/dispatch_scada',
 }
 
 
@@ -94,7 +114,7 @@ def download_zip_files(url_directory_map):
 
 def extract_zip_files(url_directory_map):
     """
-    Extract zip files that have been downloaded
+    extract zip files that have been downloaded
     :param url_directory_map:
     :return: None
     """
@@ -117,7 +137,7 @@ def extract_zip_files(url_directory_map):
 
 def organize_csv_files(source_dir):
     """
-    Organize CSV files into subdirectories based on the file name
+    organize CSV files into subdirectories based on the file name
     :param source_dir: directory containing the CSV files
     :return: None
     """
@@ -138,7 +158,7 @@ def organize_csv_files(source_dir):
 
 def remove_empty_dirs(dir_path):
     """
-    Remove empty directories
+    remove empty directories
     :param dir_path:
     """
     for root, dirs, files in os.walk(dir_path, topdown=False):
@@ -156,7 +176,7 @@ def remove_empty_dirs(dir_path):
 
 def consolidate_csv_in_subdirs(data_directory):
     """
-    Process and consolidate CSV files in each subdir of the data directory.
+    process and consolidate CSV files in each subdir of the data directory.
     :param data_directory:
     :return:
     """
@@ -178,8 +198,13 @@ def consolidate_csv_in_subdirs(data_directory):
         if dfs:
             combined_df = pd.concat(dfs, ignore_index=True)
             consolidated_csv_path = os.path.join(data_directory, f"{os.path.basename(subdir)}_consolidated.csv")
-            combined_df.to_csv(consolidated_csv_path, index=False)
-            logging.info(f"Saved consolidated CSV for {os.path.basename(subdir)} to {consolidated_csv_path}")
+            combined_df.to_parquet(
+                consolidated_csv_path,
+                index=False,
+                engine='pyarrow',
+                compression='snappy'
+            )
+            logging.info(f"Saved consolidated DF for {os.path.basename(subdir)} to {consolidated_csv_path}")
             for filename in csv_files:
                 os.remove(filename)
                 logging.info(f"Deleted {filename}")
@@ -190,7 +215,7 @@ def consolidate_csv_in_subdirs(data_directory):
 
 def write_df_to_postgres(df, table_name, connection_string):
     """
-    Write df to PostgreSQL db.
+    write df to PostgreSQL db.
     :param connection_string:
     :param df:
     :param table_name:
@@ -203,7 +228,7 @@ def write_df_to_postgres(df, table_name, connection_string):
 
 def write_consolidated_csv_to_db(data_directory, connection_string):
     """
-    Write the consolidated CSV files to a PostgreSQL database.
+    write the consolidated CSV files to a PostgreSQL database.
     :param data_directory:
     :param connection_string:
     :return:
