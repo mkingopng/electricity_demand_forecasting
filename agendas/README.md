@@ -19,4 +19,8 @@ agendas: agendas for each weekly meeting with lecturers (left 24h before the nex
   powerful factor. But it's universally agreed to be the most powerful 
   factor. I don't really understand the dissonance
 - what are lagged features and how do we create them?
+- ForecastDemand 'DATETIME': appears to have 72 readings per 30 minute interval,
+   we need confirmation that this is correct, we would need to group on DATETIME and 
+   take the average of FORECASTDEMAND column.
+- 
 
