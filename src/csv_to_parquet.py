@@ -1,5 +1,5 @@
 """
-This doesn't work yet!!!
+This works but is clunky and kind sucks
 """
 import pandas as pd
 import os
@@ -25,27 +25,23 @@ class DataProcessor:
 
 class CFG:
     data_path = './../data'
-    file_name = 'NSW_consolidated.csv'
-    date_fields = ['DATETIME']
+    file_name = 'seven_day_outlook_full_consolidated.csv'
+    date_fields = ['CALENDAR_DATE', 'INTERVAL_DATETIME']
     img_dim1 = 20
     img_dim2 = 10
 
 
 if __name__ == "__main__":
-    # Instantiate the DataProcessor with the base data path
     processor = DataProcessor(CFG.data_path)
-
-    # Load the dataset
-    totaldemand_nsw = processor.load_csv(
-        os.path.join(CFG.data_path, 'NSW', CFG.file_name),
+    df = processor.load_csv(
+        os.path.join(CFG.file_name),
         parse_dates=CFG.date_fields
     )
 
-    # Inspect the loaded data
-    print(totaldemand_nsw.head())
-    print(totaldemand_nsw.dtypes)
+    print(df.head())
+    print(df.dtypes)
 
-    # Save the dataset in Parquet format
-    processor.save_parquet(relative_path=os.path.join(
-        CFG.data_path,
-        'NSW_consolidated.parquet'))
+    processor.save_parquet(
+        df,
+        os.path.join(f'seven_day_outlook_full_consolidated.parquet')
+    )

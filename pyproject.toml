@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "team-0"
 version = "0.1.0"
-description = ""
+description = "tbc"
 authors = ["Michael Kingston <71872141+mkingopng@users.noreply.github.com>"]
 readme = "README.md"
 
@@ -27,6 +27,7 @@ python-dotenv = "^1.0.1"
 pytest = "^8.1.1"
 black = "^24.3.0"
 ruff = "^0.3.4"
+pyarrow = "^15.0.2"
 
 [build-system]
 requires = ["poetry-core"]
