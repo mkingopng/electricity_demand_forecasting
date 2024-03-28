@@ -15,6 +15,7 @@ class CFG:
 nsw_forecastdemand = pd.read_csv(
     os.path.join(CFG.data_path, 'NSW', 'forecastdemand_nsw.csv')
 )
+# this is a useless comment for testing
 
 nsw_temperature = pd.read_csv(
     os.path.join(CFG.data_path, 'NSW', 'temperature_nsw.csv')
