@@ -84,8 +84,6 @@ def DataQualityChecks(price_df_clean, price_outliers, price_outlier_removed_df):
     print(price_outliers.isna().sum())
     print(price_outliers.nunique())
 
-
-
 def DataVisualisation(price_df_clean, price_outliers, price_outlier_removed_df):
     print(' ******************** : Data Visualisation: ********************')
 
