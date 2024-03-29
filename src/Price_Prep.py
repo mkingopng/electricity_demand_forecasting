@@ -71,13 +71,26 @@ def DataPreparation(combined_df):
 
     return price_df_clean, price_outliers, price_outlier_removed_df
 
+def DataQualityChecks(price_df_clean, price_outliers, price_outlier_removed_df):
+    print(' ******************** : Data Quality: ********************')
+
+    print(f'Price Data (Clean): {price_df_clean.shape}')
+    print(f'Price Data (Outliers Only): {price_outliers.shape}')
+    print(f'Price Data (Outliers Removed): {price_outlier_removed_df.shape}')
+
+    # print(price_outlier_removed_df.describe)
+    print(price_outliers.shape)
+    # print(price_outlier_removed_df.info)
+    print(price_outliers.isna().sum())
+    print(price_outliers.nunique())
+
+
+
 def DataVisualisation(price_df_clean, price_outliers, price_outlier_removed_df):
     print(' ******************** : Data Visualisation: ********************')
 
-    plt.scatter(price_outlier_removed_df['date'],price_outlier_removed_df['rrp'])
-    # plt.title('Price Data (Outliers Removed')
-    # plt.x_label('Date')
-    # plt.y_label('Price')
+    plt.scatter(price_df_clean['date'],price_df_clean['rrp'])
+
     plt.show()
 
 
@@ -85,4 +98,6 @@ if __name__=='__main__':
    files_to_load =  GetFileList(data_path)
    combined_df = CombineFilesToDF(files_to_load)
    price_df_clean, price_outliers, price_outlier_removed_df = DataPreparation(combined_df)
+   DataQualityChecks(price_df_clean,price_outlier_removed_df, price_outliers)
    DataVisualisation(price_df_clean, price_outliers, price_outlier_removed_df)
+   # DataVisualisation(price_df_clean, price_outliers, price_outlier_removed_df)

@@ -22,5 +22,5 @@ agendas: agendas for each weekly meeting with lecturers (left 24h before the nex
 - ForecastDemand 'DATETIME': appears to have 72 readings per 30 minute interval,
    we need confirmation that this is correct, we would need to group on DATETIME and 
    take the average of FORECASTDEMAND column.
-- 
+- Price data: removing outliers might reduce the dataset to much to provide any feasible insight.
 
