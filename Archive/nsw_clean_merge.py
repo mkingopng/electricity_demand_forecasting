@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 
 class CFG:
-    data_path = './../data'
+    data_path = '../data'
     img_dim1 = 20
     img_dim2 = 10
 

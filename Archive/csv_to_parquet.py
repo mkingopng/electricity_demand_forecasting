@@ -24,8 +24,8 @@ class DataProcessor:
 
 
 class CFG:
-    data_path = './../data'
-    file_name = 'seven_day_outlook_full_consolidated.csv'
+    data_path = '../data'
+    file_name = '../data/seven_day_outlook_full_consolidated.csv'
     date_fields = ['CALENDAR_DATE', 'INTERVAL_DATETIME']
     img_dim1 = 20
     img_dim2 = 10
