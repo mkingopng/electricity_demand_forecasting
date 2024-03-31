@@ -172,3 +172,16 @@ cython_debug/
 /data/operational_demand_forecast_hh_consolidated.csv
 /data/public_actual_operational_demand_five_min_consolidated.csv
 /data/public_prices_consolidated.csv
+/data/NSW/totaldemand_nsw_csv.zip
+/data/NSW/temperature_nsw_csv.zip
+/data/rooftop_pv_actual_consolidated.csv
+/data/rooftop_pv_forecast_consolidated.csv
+/data/seven_day_outlook_full_consolidated.csv
+/data/dispatch_scada_consolidated.csv
+/data/hist_demand_consolidated.csv
+/data/NSW_consolidated.csv
+/data/
+data/operational_demand_actual_hh_consolidated.parquet
+data/operational_demand_forecast_hh_consolidated.parquet
+data/public_actual_operational_demand_five_min_consolidated.parquet
+data/public_prices_consolidated.parquet
