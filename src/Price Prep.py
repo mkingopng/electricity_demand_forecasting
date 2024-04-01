@@ -7,13 +7,13 @@ data_path = './../Noels_folder'
 
 def get_file_list(data_path):
     print('******************** : Scan Folder for Files : *******************')
-    price_data_folder = os.path.join(data_path,'P_Folder')
+    price_data_folder = os.path.join(data_path, 'P_Folder')
     files_to_load = []
 
     for root, dir, files in os.walk(price_data_folder):
         for file in files:
             if file.endswith('.csv'):
-                files_to_load.append(os.path.join(root,file))
+                files_to_load.append(os.path.join(root, file))
 
     return files_to_load
 
@@ -21,10 +21,10 @@ def get_file_list(data_path):
 def combine_files_to_df(files_to_load):
     print(' ******************** : Load & Combine Data: ********************')
     dfs = []
-    loaded =0
+    loaded = 0
     for file in files_to_load:
         df = pd.read_csv(file)
-        loaded +=1
+        loaded += 1
         dfs.append(df)
         combined_df = pd.concat(dfs)
 
@@ -40,7 +40,7 @@ def combine_files_to_df(files_to_load):
 def data_preparation(combined_df):
     print(' ******************** : Data Preparation: ********************')
     # DF with relevant columns
-    combined_df = combined_df[['SETTLEMENTDATE','TOTALDEMAND','RRP']]
+    combined_df = combined_df[['SETTLEMENTDATE', 'TOTALDEMAND', 'RRP']]
     price_df = combined_df.rename(columns={'SETTLEMENTDATE': 'date', 'TOTALDEMAND': 'totaldemand', 'RRP': 'rrp'})
     print(price_df.columns)
 
@@ -49,7 +49,7 @@ def data_preparation(combined_df):
     print(price_df['date'].dtypes)
 
     # Aggregate Data to 30 minute intervals
-    price_df.set_index('date',inplace=True)
+    price_df.set_index('date', inplace=True)
     price_df_clean = price_df.resample('30min').mean().reset_index()
     # price_df_clean.reset_index()
 
