@@ -3,7 +3,10 @@ import numpy as np
 import statsmodels.api as sm
 # import statsmodels.graphics.tsaplots as tsa
 import matplotlib.pyplot as plt
-from plot_settings import *
+from sklearn.neighbors import LocalOutlierFactor
+from sys import path
+path.append("..")
+from reuben.plot_settings import *
 
 def lower_tail_dependence_index_matrix(X, alpha=0.05):
     """
@@ -196,16 +199,6 @@ def subset_data(df:pd.DataFrame, train_split_func:bool=False, test_size:float=0.
         chunks = []
         for i in range(subset_count):
             chunks.append(df[i*chunk_size:(i+1)*chunk_size])
-        # train = pd.DataFrame(index=df.index)
-        # cols = chunks[0].columns
-        # for i in range(len(chunks)):
-        #     for j in cols:
-        #         # print(i, j)
-        #         train[f'{j}_set-{i+1}'] = chunks[i][j]
-        # if sorted:
-        #     return train.reindex(sorted(train.columns), axis=1)
-        # else:
-        #     return train
         return chunks
 
 def plot_cumulative_return(returns):
@@ -309,3 +302,202 @@ def plot_rolling_correlations(returns, span=36, portfolio=None, return_corrs=Fal
     plt.show()
     if return_corrs:
         return pd.DataFrame().from_dict(rollingCorrs)
+    
+def KalmanFilterAverage(x):
+    from pykalman import KalmanFilter
+    # Smoothing the input data helps to reduce the impact of random noise in the 
+    # data and produce a more stable estimate of the underlying trend, 
+    # which can lead to more accurate and reliable estimates of the system's state.
+    # Construct a Kalman filter
+    kf = KalmanFilter(transition_matrices = [1],
+        observation_matrices = [1],
+        initial_state_mean = 0,
+        initial_state_covariance = 1,
+        observation_covariance=1,
+        transition_covariance=.01
+        )
+    # Use the observed values of the price to get a rolling mean
+    state_means, _ = kf.filter(x.values)
+    state_means = pd.Series(state_means.flatten(), index=x.index)
+    return state_means
+
+def KalmanFilterRegression(x, y, delta=1e-7):
+    from pykalman import KalmanFilter
+    trans_cov = delta / (1 - delta) * np.eye(2) # How much random walk wiggles
+    obs_mat = np.expand_dims(np.vstack([[x], 
+                                        [np.ones(len(x))]]).T, axis=1)
+    kf = KalmanFilter(n_dim_obs=1, 
+                    n_dim_state=2, 
+                    # y is 1-dimensional, (alpha, beta) is 2-dimensional
+                    initial_state_mean=[0,0],
+                    initial_state_covariance=np.ones((2, 2)),
+                    transition_matrices=np.eye(2),
+                    observation_matrices=obs_mat,
+                    observation_covariance=2,
+                    transition_covariance=trans_cov)
+    # Use the observations y to get running estimates and errors for the state parameters
+    state_means, state_covs = kf.filter(y.values)
+    return state_means, state_covs
+
+def half_life(spread):
+    # The half-life is a measure of the time it takes for the data 
+    # to reduce to half its original value.
+    spread_lag = spread.shift(1)
+    spread_lag.iloc[0] = spread_lag.iloc[1]
+    spread_ret = spread - spread_lag
+    spread_ret.iloc[0] = spread_ret.iloc[1]
+    spread_lag2 = sm.add_constant(spread_lag)
+    model = sm.OLS(spread_ret,spread_lag2)
+    res = model.fit()
+    halflife = int(round(-np.log(2) / res.params[1],0))
+    if halflife <= 0:
+        halflife = 1
+    return halflife
+    
+    
+    
+class DataScience(object):
+    def __init__(self) -> None:
+        pass
+    
+    def check_df(self, dataframe, head=5):
+        print("##################### Columns #####################")
+        print(dataframe.columns)
+        print("##################### Shape #####################")
+        print(dataframe.shape)
+        print("##################### Types #####################")
+        print(dataframe.dtypes)
+        print("##################### Head #####################")
+        print(dataframe.head(head))
+        print("##################### Tail #####################")
+        print(dataframe.tail(head))
+        print("##################### NA #####################")
+        print(dataframe.isnull().sum())
+        print("##################### Quantiles #####################")
+        print(dataframe.describe([0, 0.05, 0.50, 0.95, 0.99, 1]).T)
+        
+    def grab_col_names(self, dataframe, cat_th=10, car_th=20):
+        # cat_cols, cat_but_car
+        cat_cols = [col for col in dataframe.columns if dataframe[col].dtypes == "O"]
+        num_but_cat = [col for col in dataframe.columns if dataframe[col].nunique() < cat_th and
+                    dataframe[col].dtypes != "O"]
+        cat_but_car = [col for col in dataframe.columns if dataframe[col].nunique() > car_th and
+                    dataframe[col].dtypes == "O"]
+        cat_cols = cat_cols + num_but_cat
+        cat_cols = [col for col in cat_cols if col not in cat_but_car]
+
+        # num_cols
+        num_cols = [col for col in dataframe.columns if dataframe[col].dtypes != "O"]
+        num_cols = [col for col in num_cols if col not in num_but_cat]
+
+        print(f"Observations: {dataframe.shape[0]}")
+        print(f"Variables: {dataframe.shape[1]}")
+        print(f'cat_cols: {len(cat_cols)}')
+        print(f'num_cols: {len(num_cols)}')
+        print(f'cat_but_car: {len(cat_but_car)}')
+        print(f'num_but_cat: {len(num_but_cat)}')
+        return cat_cols, num_cols, cat_but_car
+
+    def outlier_thresholds(self, dataframe, col_name, q1=0.10, q3=0.90):
+        quartile1 = dataframe[col_name].quantile(q1)
+        quartile3 = dataframe[col_name].quantile(q3)
+        interquantile_range = quartile3 - quartile1
+        up_limit = quartile3 + 1.5 * interquantile_range
+        low_limit = quartile1 - 1.5 * interquantile_range
+        return low_limit, up_limit
+
+    def check_outlier(self, dataframe, col_name):
+        low_limit, up_limit = self.outlier_thresholds(dataframe, col_name)
+        if dataframe[(dataframe[col_name] > up_limit) | (dataframe[col_name] < low_limit)].any(axis=None):
+            return True
+        else:
+            return False
+        
+    def missing_values_table(self, dataframe, na_name=False):
+        na_columns = [col for col in dataframe.columns if dataframe[col].isnull().sum() > 0]
+
+        n_miss = dataframe[na_columns].isnull().sum().sort_values(ascending=False)
+        ratio = (dataframe[na_columns].isnull().sum() / dataframe.shape[0] * 100).sort_values(ascending=False)
+        missing_df = pd.concat([n_miss, np.round(ratio, 2)], axis=1, keys=['n_miss', 'ratio'])
+        print(missing_df, end="\n")
+
+        if na_name:
+            return na_columns
+        
+    def high_correlated_cols(self, dataframe, plot=False, corr_th=0.90):
+        corr = dataframe.corr()
+        cor_matrix = corr.abs()
+        upper_triangle_matrix = cor_matrix.where(np.triu(np.ones(cor_matrix.shape), k=1).astype(bool))
+        drop_list = [col for col in upper_triangle_matrix.columns if any(upper_triangle_matrix[col] > corr_th)]
+        if plot:
+            import seaborn as sns
+            import matplotlib.pyplot as plt
+            sns.set(rc={'figure.figsize': (10, 5)})
+            sns.heatmap(corr, cmap="RdBu", annot=True)
+            plt.show(block=True)
+        return drop_list
+
+    def mark_outliers_lof(self, df: pd.DataFrame, col: str) -> pd.DataFrame:
+        # Create the LocalOutlierFactor object
+        lof = LocalOutlierFactor()
+        
+        # Fit the model using the specified column
+        lof.fit(df[[col]])
+        
+        # Get the outlier scores for each row
+        scores = lof.negative_outlier_factor_
+        
+        # Mark values that have a score greater than 1 as an outlier
+        df.loc[scores > 1, col + 'outlier'] = True
+        
+        return df
+  
+
+####
+import statsmodels.stats.api as sms
+from statsmodels.formula.api import ols   
+import pandas as pd
+
+TEST_NAMES = ['White', 'Breusch-Pagan', 'Goldfeld-Quandt']
+FORMULA = 'value ~ time'
+
+class Heteroskedasticity:
+    @staticmethod
+    def het_tests(series: pd.Series, test: str) -> float:
+        """
+        Testing for heteroskedasticity
+        Args:
+            series (pd.Series): Univariate time series
+            test (str): String denoting the test eg. 
+                        'white', 'goldfeldquant', 
+                        or 'breuschpagan'
+        Returns:
+            float: p-value
+        If p-value is high, we accept the null hypothesis
+        that the data is homoskedastic
+        """
+        assert test in TEST_NAMES, 'Unknown test'
+        
+        series = series.reset_index(drop=True).reset_index()
+        series.columns = ['time', 'value']
+        series['time'] += 1
+        
+        olsr = ols(FORMULA, series).fit()
+        
+        if test == 'White':
+            _, p_value, _, _ = sms.het_white(olsr.resid, olsr.model.exog)
+        elif test == 'Goldfeld-Quandt':
+            _, p_value, _ = sms.het_goldfeldquandt(olsr.resid, olsr.model.exog, alternative='two-sided')
+        else:
+            _, p_value, _, _ = sms.het_breuschpagan(olsr.resid, olsr.model.exog)
+
+        return p_value
+
+    @classmethod
+    def run_all_tests(cls, series: pd.Series):
+
+        test_results = {k: cls.het_tests(series, k) for k in TEST_NAMES}
+
+        return test_results     
+    
+    

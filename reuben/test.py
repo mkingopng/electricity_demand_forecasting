@@ -4,7 +4,7 @@ import statsmodels.api as sm
 import statsmodels.graphics.tsaplots as tsa
 import matplotlib.pyplot as plt
 from plot_settings import *
-from utils import *
+from src.utils import *
 
 nsw_df = pd.read_parquet("../data/NSW/nsw_df.parquet")
 
