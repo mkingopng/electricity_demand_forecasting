@@ -2781,6 +2781,26 @@ plugins = ["importlib-metadata"]
 windows-terminal = ["colorama (>=0.4.6)"]
 
 [[package]]
+name = "pykalman"
+version = "0.9.7"
+description = "An implementation of the Kalman Filter, Kalman Smoother, and EM algorithm in Python"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "pykalman-0.9.7-py2.py3-none-any.whl", hash = "sha256:fc80ab0832ded593c9f23a634f7208c4a3775478bc12108d6f8587912212d219"},
+    {file = "pykalman-0.9.7.tar.gz", hash = "sha256:135779200393c6b370221990f7316740472f541346e9211d11630e2c2d8fb8a0"},
+]
+
+[package.dependencies]
+numpy = "*"
+scipy = "*"
+
+[package.extras]
+all = ["Sphinx", "numpydoc", "pytest", "twine"]
+docs = ["Sphinx", "numpydoc"]
+tests = ["pytest"]
+
+[[package]]
 name = "pyparsing"
 version = "3.1.2"
 description = "pyparsing module - Classes and methods to define and execute parsing grammars"
@@ -4283,4 +4303,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "3a2a9edff19a4a0d36a07e9cf211b2a1d52de8c7c79ef107928937092921972f"
+content-hash = "ba2a6a4253c7f6cdc862e5f8c2f82b0bf5f7ba111bf1adc7cd5c6f2272462879"

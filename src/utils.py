@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
+import pykalman
 # import statsmodels.graphics.tsaplots as tsa
 import matplotlib.pyplot as plt
 from sklearn.neighbors import LocalOutlierFactor
@@ -67,7 +68,7 @@ def lower_tail_dependence_index_matrix(X, alpha=0.05):
 
     if isinstance(X, pd.DataFrame):
         mat = pd.DataFrame(mat, index=cols, columns=cols)
-    
+
     return mat
 
 def convert_cov_or_corr(matrix, cov2corr=True):
@@ -104,7 +105,7 @@ def convert_cov_or_corr(matrix, cov2corr=True):
         if flag:
             corr = pd.DataFrame(corr, index=cols, columns=cols)
         return corr
-    
+
     else:
         flag = False
         if isinstance(matrix, pd.DataFrame):
@@ -117,9 +118,10 @@ def convert_cov_or_corr(matrix, cov2corr=True):
             cov = pd.DataFrame(cov, index=cols, columns=cols)
         return cov
 
+
 def stationaryBootstrap(data: np.ndarray, m, sampleLength)-> np.ndarray:
     """
-    Returns a bootstraped sample of the time-series "data" of length "sampleLength. 
+    Returns a bootstraped sample of the time-series "data" of length "sampleLength.
     The algorithm used is stationary bootstrap from 1994 Politis & Romano.
     
     Args:     
@@ -150,12 +152,12 @@ def stationaryBootstrap(data: np.ndarray, m, sampleLength)-> np.ndarray:
                     [2.]])
 
     Original paper about stationary bootstrap:
-    Dimitris N. Politis & Joseph P. Romano (1994) The Stationary Bootstrap, Journal of the American Statistical 
+    Dimitris N. Politis & Joseph P. Romano (1994) The Stationary Bootstrap, Journal of the American Statistical
         Association, 89:428, 1303-1313, DOI: 10.1080/01621459.1994.10476870    
 
     Implemented by Gregor Fabjan from Qnity Consultants on 12/11/2021.
     """
-    
+
     accept = 1/m
     lenData = data.shape[0]
     if sampleLength is None:
@@ -167,39 +169,42 @@ def stationaryBootstrap(data: np.ndarray, m, sampleLength)-> np.ndarray:
         if np.random.uniform(0,1,1)>=accept:
             sampleIndex += 1
             if sampleIndex >= lenData:
-                sampleIndex=0        
+                sampleIndex=0
         else:
             sampleIndex = np.random.randint(0,high = lenData,size=1)
 
         sample[iSample,0] = data[sampleIndex]
     return sample.ravel()
 
+
 def win_rate(signals, returns, trade_spread=False):
     sigs = signals[1:-1].values.ravel()
     rets = (returns).shift(1).dropna().values.ravel()
     tps = np.where((np.abs(sigs) == 1) & (rets > 0), 1, 0)
-    
+
     if trade_spread:
         in_trade = np.where(np.abs(sigs) == 1, True, np.nan)
         win_rate = sum(tps)/len(in_trade[~np.isnan(in_trade)])
     else:
         win_rate = sum(tps)/len(sigs)
-        
+
     return win_rate
 
-def subset_data(df:pd.DataFrame, train_split_func:bool=False, test_size:float=0.25, subset_count:int=2, sorted=False) -> tuple:
+
+def subset_data(df: pd.DataFrame, train_split_func: bool=False, test_size: float=0.25, subset_count: int=2, sorted=False) -> tuple:
     """ Split dataframe into train test split or the number of chosen subsets."""
     if train_split_func:
         from sklearn.model_selection import train_test_split
         X_train, X_test, _, _ = train_test_split(df, df, test_size=test_size, shuffle=False)
-        return (X_train, X_test)
+        return X_train, X_test
     else:
-        import math 
+        import math
         chunk_size = math.ceil(len(df) / subset_count)
         chunks = []
         for i in range(subset_count):
-            chunks.append(df[i*chunk_size:(i+1)*chunk_size])
+            chunks.append(df[i * chunk_size:(i + 1) * chunk_size])
         return chunks
+
 
 def plot_cumulative_return(returns):
     if not isinstance(returns, pd.DataFrame):
@@ -212,38 +217,40 @@ def plot_cumulative_return(returns):
     plt.legend()
     plt.title("Cumulative Return")
     plt.show()
-    
-def plot_correlation_heatmap(returns, dividers=['.','-U']):
+
+
+def plot_correlation_heatmap(returns, dividers=['.', '-U']):
     if not isinstance(returns, pd.DataFrame):
         raise ValueError("Returns must be a DataFrame")
     tmpret = returns.copy()
     from seaborn import heatmap
-    # Calculate correlation matrix
+    # calculate correlation matrix
     cols = [col.split(dividers[0])[0] for col in tmpret.columns]
     cols = [col.split(dividers[1])[0] for col in cols]
     tmpret.columns = cols
     correlation_matrix = tmpret.corr()
-    # Create a mask to display only the bottom-left diagonal
+    # create a mask to display only the bottom-left diagonal
     mask = np.triu(np.ones_like(correlation_matrix, dtype=bool))
-    # Set up the matplotlib figure
+    # set up the matplotlib figure
     plt.figure(figsize=(10, 8))
-    # Choose a different color palette
+    # choose a different color palette
     cmap = 'viridis'
-    # Create a heatmap using seaborn
+    # create a heatmap using seaborn
     ax = heatmap(correlation_matrix, annot=True, cmap=cmap, fmt=".2f", linewidths=.5, mask=mask)
-    # Get the current figure
+    # get the current figure
     fig = plt.gcf()
-    # Set the title of the plot
+    # set the title of the plot
     plt.title('Correlation Heatmap of Returns', fontsize=16)
-    # Increase the font size of the annotations
+    # increase the font size of the annotations
     plt.xticks(fontsize=12, rotation=-20)
     plt.yticks(fontsize=12)
-    # Set a background color for the heatmap
+    # set a background color for the heatmap
     plt.gca().set_facecolor('lightgray')
-    # Remove the x-label
+    # remove the x-label
     plt.xlabel('')
-    # Show the plot
+    # show the plot
     plt.show()
+
 
 def plot_EMA_volatility(returns, span=36, frequency=None, return_emas=False):
     if not isinstance(returns, pd.DataFrame):
@@ -260,7 +267,8 @@ def plot_EMA_volatility(returns, span=36, frequency=None, return_emas=False):
     plt.legend()
     plt.show()
     if return_emas:
-        return emas     
+        return emas
+
 
 def plot_rolling_correlations(returns, span=36, portfolio=None, return_corrs=False, raw=False):
     if not isinstance(returns, pd.DataFrame):
@@ -281,7 +289,7 @@ def plot_rolling_correlations(returns, span=36, portfolio=None, return_corrs=Fal
         if second_value not in grouped_pairs:
             grouped_pairs[second_value] = []
         grouped_pairs[second_value].append(pair)
-    
+
     # dates = [str(i[0]).split(" ")[0] for i in grouped_pairs[portfolio]]
     unique_headings = returns.drop(portfolio,axis=1).columns
     linestyles = ['-', '--', '-.', ':']  # List of different linestyles
@@ -302,45 +310,57 @@ def plot_rolling_correlations(returns, span=36, portfolio=None, return_corrs=Fal
     plt.show()
     if return_corrs:
         return pd.DataFrame().from_dict(rollingCorrs)
-    
+
+
 def KalmanFilterAverage(x):
-    from pykalman import KalmanFilter
-    # Smoothing the input data helps to reduce the impact of random noise in the 
-    # data and produce a more stable estimate of the underlying trend, 
+    """
+    # Smoothing the input data helps to reduce the impact of random noise in the
+    # data and produce a more stable estimate of the underlying trend,
     # which can lead to more accurate and reliable estimates of the system's state.
+    :param x:
+    :return:
+    """
+    from pykalman import KalmanFilter
+
     # Construct a Kalman filter
-    kf = KalmanFilter(transition_matrices = [1],
-        observation_matrices = [1],
-        initial_state_mean = 0,
-        initial_state_covariance = 1,
+    kf = KalmanFilter(
+        transition_matrices=[1],
+        observation_matrices=[1],
+        initial_state_mean=0,
+        initial_state_covariance=1,
         observation_covariance=1,
         transition_covariance=.01
         )
-    # Use the observed values of the price to get a rolling mean
+    # use the observed values of the price to get a rolling mean
     state_means, _ = kf.filter(x.values)
     state_means = pd.Series(state_means.flatten(), index=x.index)
     return state_means
 
+
 def KalmanFilterRegression(x, y, delta=1e-7):
     from pykalman import KalmanFilter
-    trans_cov = delta / (1 - delta) * np.eye(2) # How much random walk wiggles
-    obs_mat = np.expand_dims(np.vstack([[x], 
-                                        [np.ones(len(x))]]).T, axis=1)
-    kf = KalmanFilter(n_dim_obs=1, 
-                    n_dim_state=2, 
-                    # y is 1-dimensional, (alpha, beta) is 2-dimensional
-                    initial_state_mean=[0,0],
-                    initial_state_covariance=np.ones((2, 2)),
-                    transition_matrices=np.eye(2),
-                    observation_matrices=obs_mat,
-                    observation_covariance=2,
-                    transition_covariance=trans_cov)
+    trans_cov = delta / (1 - delta) * np.eye(2)  # How much random walk wiggles
+    obs_mat = np.expand_dims(
+        np.vstack([[x], [np.ones(len(x))]]).T,
+        axis=1)
+    kf = KalmanFilter(
+        n_dim_obs=1,
+        n_dim_state=2,
+        # y is 1-dimensional, (alpha, beta) is 2-dimensional
+        initial_state_mean=[0,0],
+        initial_state_covariance=np.ones((2, 2)),
+        transition_matrices=np.eye(2),
+        observation_matrices=obs_mat,
+        observation_covariance=2,
+        transition_covariance=trans_cov
+    )
     # Use the observations y to get running estimates and errors for the state parameters
     state_means, state_covs = kf.filter(y.values)
     return state_means, state_covs
 
+
 def half_life(spread):
-    # The half-life is a measure of the time it takes for the data 
+    # The half-life is a measure of the time it takes for the data
     # to reduce to half its original value.
     spread_lag = spread.shift(1)
     spread_lag.iloc[0] = spread_lag.iloc[1]
@@ -349,17 +369,16 @@ def half_life(spread):
     spread_lag2 = sm.add_constant(spread_lag)
     model = sm.OLS(spread_ret,spread_lag2)
     res = model.fit()
-    halflife = int(round(-np.log(2) / res.params[1],0))
+    halflife = int(round(-np.log(2) / res.params[1], 0))
     if halflife <= 0:
         halflife = 1
     return halflife
-    
-    
-    
+
+
 class DataScience(object):
     def __init__(self) -> None:
         pass
-    
+
     def check_df(self, dataframe, head=5):
         print("##################### Columns #####################")
         print(dataframe.columns)
@@ -375,7 +394,7 @@ class DataScience(object):
         print(dataframe.isnull().sum())
         print("##################### Quantiles #####################")
         print(dataframe.describe([0, 0.05, 0.50, 0.95, 0.99, 1]).T)
-        
+
     def grab_col_names(self, dataframe, cat_th=10, car_th=20):
         # cat_cols, cat_but_car
         cat_cols = [col for col in dataframe.columns if dataframe[col].dtypes == "O"]
@@ -412,7 +431,7 @@ class DataScience(object):
             return True
         else:
             return False
-        
+
     def missing_values_table(self, dataframe, na_name=False):
         na_columns = [col for col in dataframe.columns if dataframe[col].isnull().sum() > 0]
 
@@ -423,7 +442,7 @@ class DataScience(object):
 
         if na_name:
             return na_columns
-        
+
     def high_correlated_cols(self, dataframe, plot=False, corr_th=0.90):
         corr = dataframe.corr()
         cor_matrix = corr.abs()
@@ -440,26 +459,26 @@ class DataScience(object):
     def mark_outliers_lof(self, df: pd.DataFrame, col: str) -> pd.DataFrame:
         # Create the LocalOutlierFactor object
         lof = LocalOutlierFactor()
-        
+
         # Fit the model using the specified column
         lof.fit(df[[col]])
-        
+
         # Get the outlier scores for each row
         scores = lof.negative_outlier_factor_
-        
+
         # Mark values that have a score greater than 1 as an outlier
         df.loc[scores > 1, col + 'outlier'] = True
-        
         return df
-  
+
 
 ####
 import statsmodels.stats.api as sms
-from statsmodels.formula.api import ols   
+from statsmodels.formula.api import ols
 import pandas as pd
 
 TEST_NAMES = ['White', 'Breusch-Pagan', 'Goldfeld-Quandt']
 FORMULA = 'value ~ time'
+
 
 class Heteroskedasticity:
     @staticmethod
@@ -477,27 +496,28 @@ class Heteroskedasticity:
         that the data is homoskedastic
         """
         assert test in TEST_NAMES, 'Unknown test'
-        
         series = series.reset_index(drop=True).reset_index()
         series.columns = ['time', 'value']
         series['time'] += 1
-        
         olsr = ols(FORMULA, series).fit()
-        
         if test == 'White':
             _, p_value, _, _ = sms.het_white(olsr.resid, olsr.model.exog)
         elif test == 'Goldfeld-Quandt':
-            _, p_value, _ = sms.het_goldfeldquandt(olsr.resid, olsr.model.exog, alternative='two-sided')
+            _, p_value, _ = sms.het_goldfeldquandt(
+                olsr.resid,
+                olsr.model.exog,
+                alternative='two-sided'
+            )
         else:
-            _, p_value, _, _ = sms.het_breuschpagan(olsr.resid, olsr.model.exog)
-
+            _, p_value, _, _ = sms.het_breuschpagan(
+                olsr.resid,
+                olsr.model.exog
+            )
         return p_value
 
     @classmethod
     def run_all_tests(cls, series: pd.Series):
-
         test_results = {k: cls.het_tests(series, k) for k in TEST_NAMES}
+        return test_results
 
-        return test_results     
-    
-    
+
