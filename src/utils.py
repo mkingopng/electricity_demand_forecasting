@@ -9,6 +9,7 @@ from sys import path
 path.append("..")
 from reuben.plot_settings import *
 
+
 def lower_tail_dependence_index_matrix(X, alpha=0.05):
     """
     Calculate the lower tail dependence index matrix using the empirical
@@ -119,7 +120,7 @@ def convert_cov_or_corr(matrix, cov2corr=True):
         return cov
 
 
-def stationaryBootstrap(data: np.ndarray, m, sampleLength)-> np.ndarray:
+def stationaryBootstrap(data: np.ndarray, m, sampleLength) -> np.ndarray:
     """
     Returns a bootstraped sample of the time-series "data" of length "sampleLength.
     The algorithm used is stationary bootstrap from 1994 Politis & Romano.
@@ -179,7 +180,7 @@ def stationaryBootstrap(data: np.ndarray, m, sampleLength)-> np.ndarray:
 
 def win_rate(signals, returns, trade_spread=False):
     sigs = signals[1:-1].values.ravel()
-    rets = (returns).shift(1).dropna().values.ravel()
+    rets = returns.shift(1).dropna().values.ravel()
     tps = np.where((np.abs(sigs) == 1) & (rets > 0), 1, 0)
 
     if trade_spread:

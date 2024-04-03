@@ -185,3 +185,4 @@ data/operational_demand_actual_hh_consolidated.parquet
 data/operational_demand_forecast_hh_consolidated.parquet
 data/public_actual_operational_demand_five_min_consolidated.parquet
 data/public_prices_consolidated.parquet
+/src/wandb/
