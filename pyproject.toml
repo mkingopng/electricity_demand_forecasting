@@ -34,6 +34,7 @@ torch = "^2.2.2"
 torchvision = "^0.17.2"
 torchaudio = "^2.2.2"
 prophet = "^1.1.5"
+xgboost = "^2.0.3"
 
 [build-system]
 requires = ["poetry-core"]

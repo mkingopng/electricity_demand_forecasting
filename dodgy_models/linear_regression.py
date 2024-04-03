@@ -54,6 +54,11 @@ y_train, y_temp = y[:train_size], y[train_size:]
 X_val, X_test = X_temp[:validation_size], X_temp[validation_size:]
 y_val, y_test = y_temp[:validation_size], y_temp[validation_size:]
 
+# todo: replace this reuben's function
+from src.utils import subset_data
+
+
+
 ###########
 # linear regression
 

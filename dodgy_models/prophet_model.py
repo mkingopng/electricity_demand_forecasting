@@ -49,7 +49,7 @@ m = Prophet()
 m.fit(df)
 
 # make future dataframe
-future = m.make_future_dataframe(periods=30)  # next 30 days
+future = m.make_future_dataframe(periods=30)
 
 # forecast
 forecast = m.predict(future)
