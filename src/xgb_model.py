@@ -17,7 +17,7 @@ class CFG:
     n_test = 336  # 7 days of 30-minute sample intervals
     wandb_project_name = 'electricity_demand_forecasting'
     wandb_run_name = 'xgboost'
-    version = 12  # increment for each new experiment
+    version = 13  # increment for each new experiment
     logging = True  # set to True to enable W&B logging
     sweep_count = 10  # number of sweep runs
     params = {
@@ -26,12 +26,12 @@ class CFG:
         'learning_rate': 0.07984076257805875,  # def 0.1
         'max_depth': 8,
         'min_child_weight': 20,  # def 0.1
-        'nthread': 4,  #
+        'nthread': 4,  # ?
         'random_state': 42,
         'reg_alpha': 0.7863437272577511,
         'reg_lambda': 3.475149811652308,  # def 1
         'eval_metric': ['mae'],
-        'tree_method': 'hist'  # use 'hist' for CPU and 'gpu_hist' for GPU
+        'tree_method': 'hist'
     }
     sweep_config = {
         "method": "random",

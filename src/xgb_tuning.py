@@ -3,15 +3,9 @@
 """
 import xgboost as xgb
 import optuna
-from xgboost.callback import TrainingCallback
 import pandas as pd
-import numpy as np
 from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import train_test_split
-from sklearn.model_selection import ParameterGrid
-from sklearn.base import clone
-import wandb
-import matplotlib.pyplot as plt
 
 n_in = 6  # 6 lag intervals
 n_test = 336  # 7 days of 30-minute sample intervals
@@ -133,3 +127,12 @@ params={
 user_attrs={}, system_attrs={}, intermediate_values={}, distributions={'gamma': FloatDistribution(high=5.0, log=False, low=0.1, step=None), 'learning_rate': FloatDistribution(high=0.3, log=False, low=0.01, step=None), 'max_depth': IntDistribution(high=10, log=False, low=3, step=1), 'min_child_weight': IntDistribution(high=300, log=False, low=1, step=1), 'subsample': FloatDistribution(high=1.0, log=False, low=0.5, step=None), 'reg_alpha': FloatDistribution(high=1.0, log=False, low=0.0, step=None), 'reg_lambda': FloatDistribution(high=10.0, log=False, low=1e-08, step=None)}, trial_id=75, value=None)
 
 """
+
+# todo:
+#  CUDA device issue,
+#  improve data,
+#  save trained model,
+#  ensemble,
+#  feature importance,
+#  decomposition features
+#  visualisation using SHAP
