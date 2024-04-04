@@ -14,10 +14,11 @@ import io
 
 
 class CFG:
-    n_in = 1  # 6
+    n_in = 6  # 6 lag intervals
     n_test = 336  # 7 days of 30-minute intervals
     wandb_project_name = 'electricity_demand_forecasting'
     wandb_run_name = 'xgboost'
+    version = 2  # increment for each new experiment
     logging = False  # set to True to enable W&B logging
 
 
@@ -175,7 +176,7 @@ if __name__ == "__main__":
     if CFG.logging:
         wandb.init(
             project=CFG.wandb_project_name,
-            name=CFG.wandb_run_name,
+            name=f'{CFG.wandb_run_name}_v{CFG.version}',
             config=config_dict
         )
 
