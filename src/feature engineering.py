@@ -8,7 +8,7 @@ pd.options.display.max_rows = 50
 pd.options.display.width = 120
 pd.options.display.float_format = '{:.2f}'.format
 
-
+# todo: this needs to be updated to reflect the latest changes in NS_Test.ipynb
 class NSWDataProcessor:
     def __init__(self, data_path):
         self.data_path = data_path
