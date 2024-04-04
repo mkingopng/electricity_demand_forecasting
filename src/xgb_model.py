@@ -22,14 +22,14 @@ class CFG:
     sweep_count = 10  # number of sweep runs
     params = {
         'objective': 'reg:squarederror',
-        'gamma': 0,  # def 0
-        'learning_rate': 0.1,  # def 0.1
-        'max_depth': 4,
-        'min_child_weight': 100,  # def 0.1
+        'gamma': 4.592513457496951,  # def 0
+        'learning_rate': 0.07984076257805875,  # def 0.1
+        'max_depth': 8,
+        'min_child_weight': 20,  # def 0.1
         'nthread': 4,  #
         'random_state': 42,
-        'reg_alpha': 1,
-        'reg_lambda': 0,  # def 1
+        'reg_alpha': 0.7863437272577511,
+        'reg_lambda': 3.475149811652308,  # def 1
         'eval_metric': ['mae'],
         'tree_method': 'hist'  # use 'hist' for CPU and 'gpu_hist' for GPU
     }
