@@ -12,7 +12,7 @@ from statsmodels.tsa.api import ExponentialSmoothing
 
 load_dotenv()
 wandb_api_key = os.getenv('WANDB_API_KEY')
-wandb.login(key=wandb_api_key)  # log-in to wandb using API key
+# wandb.login(key=wandb_api_key)  # log-in to wandb using API key
 
 
 class CFG:
@@ -24,10 +24,10 @@ class CFG:
 
 
 # initialize wandb
-wandb.init(
-    project=CFG.wandb_project,
-    name=CFG.wandb_run_name
-)
+# wandb.init(
+#     project=CFG.wandb_project,
+#     name=CFG.wandb_run_name
+# )
 
 # settings
 sns.set(style="darkgrid")
@@ -44,12 +44,12 @@ df = pd.read_csv(
 X = df[['TEMPERATURE']]  # we can modify this based on feature analysis
 y = df['TOTALDEMAND']
 
-# Determine the indices for splitting
+# determine the indices for splitting
 train_size = int(len(X) * 0.6)
 validation_size = int(len(X) * 0.2)
 test_size = len(X) - train_size - validation_size
 
-# Split the datasets
+# split the datasets
 X_train, X_temp = X[:train_size], X[train_size:]
 y_train, y_temp = y[:train_size], y[train_size:]
 
@@ -58,30 +58,39 @@ y_val, y_test = y_temp[:validation_size], y_temp[validation_size:]
 
 ###################################
 # Exponential smoothing
-# Convert index to datetime, if not already
+
+# convert index to datetime, if not already
 df.index = pd.to_datetime(df.index)
 
-# Manually set the frequency to 30 minutes when converting to a PeriodIndex
+# manually set the frequency to 30 min when converting to a PeriodIndex
 df.index = df.index.to_period(freq='30min')
 
 # Assuming 'df' is your DataFrame and 'y' is the target variable
 y = df['TOTALDEMAND']
 
-# Fit the model
+# fit the model
 model = ExponentialSmoothing(y, seasonal_periods=48, trend='add', seasonal='add', use_boxcox=True, initialization_method="estimated")
 fit = model.fit()
 
-# Forecast the next 24 periods (adjust according to your needs)
+# forecast the next 24 periods (adjust according to your needs)
 forecast = fit.forecast(24)
 
-# Plotting the results
+# plotting the results
 plt.figure(figsize=(CFG.img_dim1, CFG.img_dim2))
-plt.plot(y.reset_index(drop=True), label='Actual Demand')  # Reset index for plotting
-# Plot forecast with an offset for continuation
-plt.plot(range(len(y), len(y)+len(forecast)), forecast, label='Forecast', linestyle='--')
+plt.plot(
+    y.reset_index(drop=True),
+    label='Actual Demand'
+)  # reset index for plotting
+# plot forecast with an offset for continuation
+plt.plot(
+    range(len(y), len(y)+len(forecast)),
+    forecast,
+    label='Forecast',
+    linestyle='--'
+)
 
-# Optionally, set custom date labels for the x-axis
-date_labels = y.index.to_timestamp().strftime('%YYYY')[::48]  # Adjust the slicing based on your needs
+# optionally, set custom date labels for the x-axis
+date_labels = y.index.to_timestamp().strftime('%YYYY')[::48]  # adjust the slicing based on your needs
 plt.xticks(ticks=range(0, len(y), 48), labels=date_labels, rotation=45)  # Adjust ticks for your dataset
 
 plt.title('Demand Forecast using Holt-Winters’ Seasonal Method')
@@ -92,30 +101,31 @@ plt.tight_layout()  # Adjust layout to make room for date labels
 plt.show()
 
 # fix_me: Save the plot to a file
-forecast_plot_filename = "exponential_smoothing_forecast.png"
-plt.savefig(forecast_plot_filename)
+# forecast_plot_filename = "exponential_smoothing_forecast.png"
+# plt.savefig(forecast_plot_filename)
 plt.close()
 
 # Log the saved plot to wandb
-wandb.log({"Exponential Smoothing Forecast": wandb.Image(forecast_plot_filename)})
+# wandb.log({"Exponential Smoothing Forecast": wandb.Image(forecast_plot_filename)})
 
 y_test = df['TOTALDEMAND'][-24:]  # adjust according to dataset & analysis
 forecast = fit.forecast(24)
 
 mae = mean_absolute_error(y_test, forecast)
-mse = mean_squared_error(y_test, forecast)
-rmse = np.sqrt(mse)
-mape = mean_absolute_percentage_error(y_test, forecast)
+print(mae)
+# mse = mean_squared_error(y_test, forecast)
+# rmse = np.sqrt(mse)
+# mape = mean_absolute_percentage_error(y_test, forecast)
 
 # log metrics to wandb
-wandb.log({
-    'MAE': mae,
-    'MSE': mse,
-    'RMSE': rmse,
-    'MAPE': mape
-})
+# wandb.log({
+#     'MAE': mae,
+    # 'MSE': mse,
+    # 'RMSE': rmse,
+    # 'MAPE': mape
+# })
 
 ##########################################
 
 # finish wandb run
-wandb.finish()
+# wandb.finish()
