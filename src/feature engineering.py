@@ -124,5 +124,5 @@ if __name__ == "__main__":
     print(subset_df.head())  # print head of subset df
 
     # save subset df to CSV and Parquet
-    subset_df.to_csv('./../data/NSW/processed_data_subset.csv')
-    subset_df.to_parquet('./../data/NSW/processed_data_subset.parquet')
+    subset_df.to_csv('./../data/NSW/processed_data.csv')
+    subset_df.to_parquet('./../data/NSW/processed_data.parquet')
