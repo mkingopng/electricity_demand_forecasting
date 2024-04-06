@@ -9,7 +9,6 @@ from sys import path
 path.append("..")
 from reuben.plot_settings import *
 
-
 def lower_tail_dependence_index_matrix(X, alpha=0.05):
     """
     Calculate the lower tail dependence index matrix using the empirical
@@ -119,8 +118,7 @@ def convert_cov_or_corr(matrix, cov2corr=True):
             cov = pd.DataFrame(cov, index=cols, columns=cols)
         return cov
 
-
-def stationaryBootstrap(data: np.ndarray, m, sampleLength) -> np.ndarray:
+def stationaryBootstrap(data: np.ndarray, m, sampleLength)-> np.ndarray:
     """
     Returns a bootstraped sample of the time-series "data" of length "sampleLength.
     The algorithm used is stationary bootstrap from 1994 Politis & Romano.
@@ -177,10 +175,9 @@ def stationaryBootstrap(data: np.ndarray, m, sampleLength) -> np.ndarray:
         sample[iSample,0] = data[sampleIndex]
     return sample.ravel()
 
-
 def win_rate(signals, returns, trade_spread=False):
     sigs = signals[1:-1].values.ravel()
-    rets = returns.shift(1).dropna().values.ravel()
+    rets = (returns).shift(1).dropna().values.ravel()
     tps = np.where((np.abs(sigs) == 1) & (rets > 0), 1, 0)
 
     if trade_spread:
@@ -191,12 +188,11 @@ def win_rate(signals, returns, trade_spread=False):
 
     return win_rate
 
-
 def subset_data(df: pd.DataFrame, train_split_func: bool=False, test_size: float=0.25, subset_count: int=2, sorted=False) -> tuple:
     """ Split dataframe into train test split or the number of chosen subsets."""
     if train_split_func:
         from sklearn.model_selection import train_test_split
-        X_train, X_test, _, _ = train_test_split(df, df, test_size=test_size, shuffle=False)
+        X_train, X_test, y_train, y_test = train_test_split(df, df, test_size=test_size, shuffle=False)
         return X_train, X_test
     else:
         import math
