@@ -5,14 +5,51 @@ path.append("..")
 from src.utils import *
 from plot_settings import *
 from markov_funcs import *
+from hmmlearn import hmm
 
 data = pd.read_csv("../data/NSW/final_df.csv", index_col=0)
 df = data.loc['2019-08-01':'2020-02-14']
-df
 
 plot_correlation_heatmap(data)
 # plot_rolling_correlations(data, span=48*252, portfolio='TOTALDEMAND')
 
+#### Markov Model
+from sklearn.preprocessing import StandardScaler
+
+## Choose reponse and predictor
+cols = ['TOTALDEMAND', 'rrp']
+tmpdf = np.log(df[cols]).dropna()
+tmpdf = tmpdf[(tmpdf != 0) & (tmpdf != -np.inf)].dropna() ## fails standard scaler otherwise
+
+## Scale data for model
+tmpdf_scaled = StandardScaler().set_output(transform='pandas').fit_transform(tmpdf)
+tmpdf_scaled.plot()
+
+## Train/ Test split
+days = 7
+X_test = tmpdf_scaled.iloc[-days*48:]
+X_train = tmpdf_scaled.iloc[:-days*48]
+
+# k_regimes, endog, exog = 2, tmpdf_scaled[cols[0]], tmpdf_scaled[cols[1]]
+# k_regimes, endog, exog = 2, tmpdf_scaled[cols[0]].rolling(48).mean().dropna(), tmpdf_scaled[cols[1]].rolling(48).mean().dropna()
+endog, exog = 2, KalmanFilterAverage(X_train[cols[0]]), KalmanFilterAverage(X_train[cols[1]])
+
+k_regimes = 3
+model = sm.tsa.MarkovRegression(endog=endog, k_regimes=k_regimes, trend='c', switching_variance=True, exog=exog)
+model_res = model.fit(search_reps=10)
+model_res.summary()
+plot_regimes(endog, model_res, prob_ind=1)
+print(model_res.expected_durations) # 30 minute blocks
+
+## Model predict (not proper)
+X_test_reset_index = X_test.reset_index(drop=True)
+predictions = model_res.predict(start=0, end=len(X_test_reset_index) - 1)
+
+## Plot
+predictions.plot()
+X_test[cols[0]].plot()
+
+######## Hidden Markov Model
 
 def hiddenMarkovModel(prices, col, hidden_states=2, d=0.94, start='2024-01-01', gaussianHMM=False, train_test_split=True, plot=True, remove_direction_and_mean=True, verbose=True,
                       algorithm='viterbi', cov_type='diag'):
@@ -142,7 +179,7 @@ def hiddenMarkovModel(prices, col, hidden_states=2, d=0.94, start='2024-01-01', 
             for i in range(hidden_states):
                 state_probs_test = pd.Series(model.predict_proba(x_test)[:, i], index=X_test.loc[start:].index)
                 state_probs_smooth = state_probs_test.ewm(alpha=1-d).mean()
-                plt.plot(state_probs_smooth, label=f'Test State {i+1}', c=colors[i])
+                plt.plot(state_probs_smooth, label=f'State {i+1}', c=colors[i])
             plt.legend()
             plt.title('Smoothed Marginal Probabilities (Test)')
             
@@ -211,35 +248,119 @@ def hiddenMarkovModel(prices, col, hidden_states=2, d=0.94, start='2024-01-01', 
     
     return model
 
-
 col = 'rrp'
 tmpdf = np.log(df[[col]]).dropna()
+
+#### Build model
+# model = hiddenMarkovModel(tmpdf, col, hidden_states=hidden_states, d=d, start=start, gaussianHMM=gaussianHMM, train_test_split=train_test_split, remove_direction_and_mean=remove_direction_and_mean, verbose=verbose, algorithm=algorithm, cov_type=cov_type)
+from sklearn.preprocessing import StandardScaler
+
+## Choose reponse and predictor
+cols = ['TOTALDEMAND', 'rrp']
+start_0 = '2020-01-01'
+tmpdf = np.log(df[cols]).dropna().loc[start_0:]
+tmpdf = tmpdf[(tmpdf != 0) & (tmpdf != -np.inf)].dropna() ## fails standard scaler otherwise
+interaction_feature = tmpdf[cols[0]] * tmpdf[cols[1]]
+interaction_feature.plot()
+
+## Scale data for model
+scaled = StandardScaler().set_output(transform='pandas').fit_transform(interaction_feature.values.reshape(-1,1))
+scaled.index = interaction_feature.index
+scaled.plot()
+
+## Train/ Test split
+days = 7
+X_test = scaled.iloc[-days*48:]
+X_train = scaled.iloc[:-days*48]
+
+# k_regimes, endog, exog = 2, tmpdf_scaled[cols[0]], tmpdf_scaled[cols[1]]
+# k_regimes, endog, exog = 2, tmpdf_scaled[cols[0]].rolling(48).mean().dropna(), tmpdf_scaled[cols[1]].rolling(48).mean().dropna()
+X_train, X_test = KalmanFilterAverage(X_train), KalmanFilterAverage(X_train)
+x_train, x_test = X_train.values.reshape(-1,1), X_test.values.reshape(-1,1)
 
 train_test_split, start = True, None
 remove_direction_and_mean, verbose = False, True
 gaussianHMM, hidden_states, d = True, 2, 0.94
 algorithm, cov_type = 'viterbi', 'diag'
 
-model = hiddenMarkovModel(tmpdf, col, hidden_states=hidden_states, d=d, start=start, gaussianHMM=gaussianHMM, train_test_split=train_test_split, remove_direction_and_mean=remove_direction_and_mean, verbose=verbose, algorithm=algorithm, cov_type=cov_type)
+model = hmm.GMMHMM(n_components=hidden_states, covariance_type=cov_type,
+                        n_iter=100, random_state=42, 
+                        verbose=False, algorithm=algorithm)
 
-#### Markov Model
-df.columns
+model.fit(x_train)
+## Predict the hidden states corresponding to the observed values
+score, Z = model.decode(x_train)
+states = pd.unique(Z)
 
-col = 'rrp'
-tmpdf = np.log(df[[col]])
+if verbose:
+    print("\nLog Probability & States:")
+    print(score, states)
+    
+    print("\nStarting probabilities:")
+    print(model.startprob_.round(2))
+    
+    print("\nTransition matrix:")
+    print(model.transmat_.round(3))
+    
+    print("\nGaussian distribution means:")
+    print(model.means_.round(4))
+    
+    print("\nGaussian distribution covariances:")
+    print(model.covars_.round(4))
 
-endpg = tmpdf
-# endog = KalmanFilterAverage(tmpdf).iloc[24:]
+def plot_hmm(): 
+    # if start is None:
+    start = X_test.index[0]
+    start_label = str(X_train.index[-1]).split(" ")[0]
+    # else:
+    #     start_label = start
+    x_test = X_test.loc[start:].values.reshape(-1,1)
+    score_test, Z_test = model.decode(x_test)
+    # Plot the price chart
+    plt.figure(figsize=(15, 8))
+    subplots = hidden_states + 2
+    colors = ['r', 'g', 'b']
+    plt.subplot(subplots, 1, 1)
+    for i in states:
+        want = (Z == i)
+        try:
+            price = tmpdf[cols[0]].loc[:X_train.index[-1]]
+            if price.shape[0] != len(want):
+                raise ValueError('break')
+        except:
+            price = tmpdf[cols[0]].loc[:X_train.index[-1]].iloc[:-1]
+        x = price[want].index
+        y = price[want]
+        plt.plot(x, y, '.', label=f'State: {i+1}', c=colors[i])
+    plt.title(f'Up to {str(X_train.index[-1]).split(" ")[0]}')
+    plt.legend()
+    # Plot the smoothed marginal probabilities
+    plt.subplot(subplots, 1, 2)
+    for i in range(hidden_states):
+        state_probs = pd.Series(model.predict_proba(x_train)[:, i], index=X_train.loc[:start].index)
+        state_probs_smooth = state_probs.ewm(alpha=1-d).mean()
+        plt.plot(state_probs_smooth, label=f'State {i+1}', alpha=0.5, c=colors[i])
+    plt.legend()
+    plt.title('Smoothed Marginal Probabilities (Train)')
+    # Plot the smoothed marginal probabilities for x_test
+    plt.subplot(subplots, 1, 3)
+    for i in states:
+        want = (Z_test == i)
+        price = tmpdf[cols[0]][1:].loc[start:]
+        x = price[want].index
+        y = price[want]
+        plt.plot(x, y, '.', label=f'State: {i+1}', c=colors[i])
+    plt.title(f'From {start_label} onwards')
+    plt.legend()
+    plt.subplot(subplots, 1, 4)
+    for i in range(hidden_states):
+        state_probs_test = pd.Series(model.predict_proba(x_test)[:, i], index=X_test.loc[start:].index)
+        state_probs_smooth = state_probs_test.ewm(alpha=1-d).mean()
+        plt.plot(state_probs_smooth, label=f'State {i+1}', c=colors[i])
+    plt.legend()
+    plt.title('Smoothed Marginal Probabilities (Test)')
 
-endog.plot()
-# endog = endog.rolling(48).mean().dropna()
-# endog.plot()
+    plt.tight_layout()
+    plt.show()
 
-rollingVol = endog.rolling(48).std().dropna()
-
-endog = endog.pct_change()
-rollingVol.plot()
-model = markov_regime_switching(endog, 2, search_reps=5, print_summary=True)
-plot_regimes(endog, model, prob_ind=0)
-
-
+plot_hmm()
