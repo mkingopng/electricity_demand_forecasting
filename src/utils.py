@@ -93,6 +93,21 @@ def csv_to_parquet(csv_folder, parquet_folder):
         print(f"Converted {csv_file} to parquet format.")
 
 
+def month_to_season(month):
+    """
+    map months to seasons
+    :param month: int: month of the year
+    """
+    if month in [12, 1, 2]:
+        return 1
+    elif month in [3, 4, 5]:
+        return 2
+    elif month in [6, 7, 8]:
+        return 3
+    elif month in [9, 10, 11]:
+        return 4
+
+
 def lower_tail_dependence_index_matrix(X, alpha=0.05):
     """
     Calculate the lower tail dependence index matrix using the empirical
