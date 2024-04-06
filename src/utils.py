@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
+import os
 import pykalman
 # import statsmodels.graphics.tsaplots as tsa
 import matplotlib.pyplot as plt
@@ -8,6 +9,89 @@ from sklearn.neighbors import LocalOutlierFactor
 from sys import path
 path.append("..")
 from reuben.plot_settings import *
+
+
+def csv_to_parquet(csv_folder, parquet_folder):
+    """
+    converts specified CSV files in the given folder to Parquet format with
+    specific parsing rules for dates, columns, and index
+
+    Parameters:
+    :param csv_folder: path to the folder containing CSV files.
+    :param parquet_folder: path to the folder where Parquet files will be saved
+    """
+    # ensure output directory exists
+    os.makedirs(parquet_folder, exist_ok=True)
+
+    # List of specific CSV files to convert
+    csv_files = [
+        'forecastdemand_nsw.csv',
+        'temperature_nsw.csv',
+        'totaldemand_nsw.csv',
+        'price_cleaned_data.csv'
+    ]
+
+    # conversion specs for ea. file
+    file_specs = {
+        'forecastdemand_nsw.csv': {
+            'parse_dates': ['DATETIME'],
+            'index_col': 'DATETIME',
+            'usecols': ['PERIODID', 'FORECASTDEMAND', 'DATETIME'],
+            'dayfirst': False
+        },
+        'totaldemand_nsw.csv': {
+            'parse_dates': ['DATETIME'],
+            'index_col': 'DATETIME',
+            'usecols': ['DATETIME', 'TOTALDEMAND'],
+            'dayfirst': True
+        },
+        'temperature_nsw.csv': {
+            'parse_dates': ['DATETIME'],
+            'index_col': 'DATETIME',
+            'usecols': ['DATETIME', 'TEMPERATURE'],
+            'dayfirst': True
+        },
+        'price_cleaned_data.csv': {
+            'parse_dates': ['date'],
+            'index_col': 'date',
+            'usecols': ['date', 'rrp'],
+        }
+    }
+
+    # convert specified CSV files to Parquet, applying specific specs
+    for csv_file in csv_files:
+        specs = file_specs.get(csv_file, {})
+        csv_path = os.path.join(csv_folder, csv_file)
+        parquet_path = os.path.join(
+            parquet_folder,
+            csv_file.replace('.csv', '.parquet')
+        )
+
+        if not os.path.exists(csv_path):
+            print(f"File {csv_file} not found in {csv_folder}. Skipping...")
+            continue
+
+        if os.path.exists(parquet_path):
+            print(
+                f"Parquet file for {csv_file} exists. Skipping conversion...")
+            continue
+
+        # load CSV with specific options
+        df = pd.read_csv(
+            csv_path,
+            parse_dates=specs.get('parse_dates'),
+            dayfirst=specs.get('dayfirst', False),
+            index_col=specs.get('index_col'),
+            usecols=specs.get('usecols')
+        )
+
+        # Save DataFrame to Parquet
+        df.to_parquet(
+            parquet_path,
+            index=True if specs.get('index_col') is not None else False
+        )
+        print(f"Converted {csv_file} to parquet format.")
+
 
 def lower_tail_dependence_index_matrix(X, alpha=0.05):
     """
