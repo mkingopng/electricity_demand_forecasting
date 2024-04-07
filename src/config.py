@@ -47,3 +47,12 @@ class CFG:
             },
         }
     }
+
+
+class LstmCFG:
+    input_size = 1  # the number of input features in dataset
+    hidden_layer_size = 50
+    output_size = 1
+    learning_rate = 0.001
+    batch_size = 1
+    epochs = 10

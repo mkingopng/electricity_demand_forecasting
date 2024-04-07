@@ -6,6 +6,7 @@ import pykalman
 # import statsmodels.graphics.tsaplots as tsa
 import matplotlib.pyplot as plt
 from sklearn.neighbors import LocalOutlierFactor
+from sklearn.preprocessing import StandardScaler
 from sys import path
 path.append("..")
 from reuben.plot_settings import *
@@ -16,7 +17,6 @@ def csv_to_parquet(csv_folder, parquet_folder):
     converts specified CSV files in the given folder to Parquet format with
     specific parsing rules for dates, columns, and index
 
-    Parameters:
     :param csv_folder: path to the folder containing CSV files.
     :param parquet_folder: path to the folder where Parquet files will be saved
     """
@@ -91,6 +91,22 @@ def csv_to_parquet(csv_folder, parquet_folder):
             index=True if specs.get('index_col') is not None else False
         )
         print(f"Converted {csv_file} to parquet format.")
+
+
+def normalize_columns(df, input_cols, output_cols):
+    """
+    normalises specified columns in the DataFrame using Z-score normalisation.
+
+    :param df: the df containing the data.
+    :param input_cols: a list of column names to normalise.
+    :param output_cols: a list of output column names for the normalised data.
+
+    :returns: original df with the normalized columns added.
+    """
+    scaler = StandardScaler()
+    for input_col, output_col in zip(input_cols, output_cols):
+        df[output_col] = scaler.fit_transform(df[[input_col]])
+    return df
 
 
 def month_to_season(month):
