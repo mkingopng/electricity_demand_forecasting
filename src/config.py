@@ -1,8 +1,10 @@
 """
 
 """
+
+
 class CFG:
-    data_path = './../data'
+    data_path = './../data/NSW'
     img_dim1 = 20
     img_dim2 = 10
     n_in = 6  # 6 lag intervals
