@@ -36,16 +36,17 @@ def loop_rolling_realised_vol(returns, years, k_regimes=2, switching_variance=Tr
         results[regime] = res_model
     return rolling_real_vol, results
 
-def plot_regimes(endog, model_res, title=None, prob_ind=0, underlying=None):
+def plot_regimes(endog, model_res, title=None, prob_ind=0, exogs=None):
     if not isinstance(endog, pd.DataFrame):
         endog = pd.DataFrame(endog)
     ## From the summary we can see the two regimes (const - mean, sigma2 - variance) # as well as transition probabilities.
     # Plot the spread price along with the probabilites of high-mean regime 
     fig, axs = plt.subplots(2,1,figsize=(18,8))
     fig.subplots_adjust(hspace=0.75)
-    # if underlying is not None:
-    #     underlying.plot(ax=axs[0], label=underlying.columns[0])
-    endog.dropna().plot(ax=axs[0])
+    if exogs is not None:
+        for exog in exogs: 
+            exogs[exog].plot(ax=axs[0], linewidth=2)
+    endog.dropna().plot(ax=axs[0], linewidth=4)
     axs[0].axhline(y=model_res.params['const[0]'], label=r'$\mu_0$', linestyle='dotted', c='r') 
     axs[0].axhline(y=model_res.params['const[1]'], label=r'$\mu_1$', linestyle='dotted', c='m') 
     if title is not None:
