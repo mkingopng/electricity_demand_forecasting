@@ -93,20 +93,25 @@ def csv_to_parquet(csv_folder, parquet_folder):
         print(f"Converted {csv_file} to parquet format.")
 
 
-def normalize_columns(df, input_cols, output_cols):
+def normalize_columns(df, column_mapping):
     """
-    normalises specified columns in the DataFrame using Z-score normalisation.
+    normalizes specified columns in the DataFrame using Z-score normalization.
 
-    :param df: the df containing the data.
-    :param input_cols: a list of column names to normalise.
-    :param output_cols: a list of output column names for the normalised data.
+    :param df: The DataFrame containing the data.
+    :param column_mapping: A dictionary where keys are original column names
+    and values are normalized column names.
 
-    :returns: original df with the normalized columns added.
+    Returns:
+    - A DataFrame with the normalized columns added.
+    - A dictionary of scalers used for each column.
     """
-    scaler = StandardScaler()
-    for input_col, output_col in zip(input_cols, output_cols):
-        df[output_col] = scaler.fit_transform(df[[input_col]])
-    return df
+    scalers = {}
+    for original_col, normalized_col in column_mapping.items():
+        scaler = StandardScaler()
+        df[normalized_col] = scaler.fit_transform(df[[original_col]])
+        scalers[original_col] = scaler
+    return df, scalers
+
 
 
 def month_to_season(month):

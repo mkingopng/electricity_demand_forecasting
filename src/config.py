@@ -50,9 +50,12 @@ class CFG:
 
 
 class LstmCFG:
+    n_splits = 5
+    n_features = 35
     input_size = 1  # the number of input features in dataset
     hidden_layer_size = 50
     output_size = 1
     learning_rate = 0.001
     batch_size = 1
     epochs = 10
+    sequence_length = 336  # one week of 30-minute sample intervals
