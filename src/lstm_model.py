@@ -15,6 +15,12 @@ from utils import normalize_columns
 from sklearn.model_selection import TimeSeriesSplit
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import wandb
+from dotenv import load_dotenv
+
+load_dotenv()
+wandb_api_key = os.getenv('WANDB_API_KEY')
+wandb.login(key=wandb_api_key)
 
 
 class LstmCFG:
@@ -25,8 +31,10 @@ class LstmCFG:
     output_size = 1
     lr = 0.0001
     batch_size = 256
-    epochs = 5
+    epochs = 10
     seq_length = 336  # 336 one week of 30-minute sample intervals
+    dropout = 0.2
+    num_layers = 2
 
 
 class DemandDataset(Dataset):
@@ -50,8 +58,9 @@ class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_layer_size, output_size):
         super(LSTMModel, self).__init__()
         self.hidden_layer_size = hidden_layer_size
-        self.lstm = nn.LSTM(input_size, hidden_layer_size, batch_first=True)
-        self.linear = nn.Linear(hidden_layer_size, output_size)
+        self.lstm = nn.LSTM(input_size, hidden_layer_size, batch_first=True, num_layers=LstmCFG.num_layers, bidirectional=True)
+        self.dropout = nn.Dropout(LstmCFG.dropout)
+        self.linear = nn.Linear(hidden_layer_size * 2, output_size)
         self.relu = nn.ReLU()
 
     def forward(self, input_seq):
@@ -61,7 +70,8 @@ class LSTMModel(nn.Module):
         self.lstm.flatten_parameters()
         lstm_out, _ = self.lstm(input_seq)
         last_timestep_output = lstm_out[:, -1, :]
-        linear_output = self.linear(last_timestep_output)
+        dropped_out = self.dropout(last_timestep_output)
+        linear_output = self.linear(dropped_out)
         predictions = self.relu(linear_output)
         return predictions
 
@@ -86,55 +96,7 @@ def plot_loss_curves(train_losses, test_losses, title="Loss Curves"):
     plt.show()
 
 
-def find_learning_rate(
-        model, data_loader, criterion, init_lr=1e-7, final_lr=10., beta=0.98
-        ):
-    num = len(data_loader) - 1
-    mult = (final_lr / init_lr) ** (1 / num)
-    lr = init_lr
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    avg_loss = 0.
-    best_loss = float('inf')
-    batch_num = 0
-    losses = []
-    log_lrs = []
-    for inputs, labels in data_loader:
-        batch_num += 1
-        optimizer.param_groups[0]['lr'] = lr
-        outputs = model(inputs.to(device))
-        loss = criterion(outputs, labels.to(device))
-
-        # Compute the smoothed loss
-        avg_loss = beta * avg_loss + (1 - beta) * loss.item()
-        smoothed_loss = avg_loss / (1 - beta ** batch_num)
-
-        # Stop if the loss is exploding
-        if batch_num > 1 and smoothed_loss > 4 * best_loss:
-            break
-
-        # Record the best loss
-        if smoothed_loss < best_loss or batch_num == 1:
-            best_loss = smoothed_loss
-
-        # Store the values
-        losses.append(smoothed_loss)
-        log_lrs.append(lr)
-
-        # Do the optimizer step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # Update the lr for the next step
-        lr *= mult
-
-    plt.plot([np.log10(x) for x in log_lrs], losses)
-    plt.xlabel("Learning Rate (log scale)")
-    plt.ylabel("Loss")
-    plt.show()
-
-
-# Define the maximum values for each cyclical feature
+# define the maximum values for each cyclical feature
 max_values = {
     'hour': 24,
     'dow': 7,
@@ -169,6 +131,24 @@ input_features = [
 
 if __name__ == "__main__":
     CFG = CFG()
+
+    if CFG.logging:
+        wandb.init(
+            project=CFG.wandb_project_name,
+            name=f'{CFG.wandb_run_name}_v{CFG.version}',
+            job_type='train_model'
+        )
+
+    wandb.config = {
+        "n_folds": LstmCFG.n_folds,
+        "n_features": LstmCFG.n_features,
+        "hidden layers": LstmCFG.hidden_layer_size,
+        "learning_rate": LstmCFG.lr,
+        "batch_size": LstmCFG.batch_size,
+        "epochs": LstmCFG.epochs,
+        "sequence_length": LstmCFG.seq_length,
+        "dropout": LstmCFG.dropout
+    }
 
     nsw_df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
 
@@ -260,6 +240,7 @@ if __name__ == "__main__":
             total_test_loss = 0
             num_train_batches = 0
             num_test_batches = 0
+
             model.train()
             for sequences, labels in tqdm(train_loader, desc=f"Training Epoch {epoch + 1}"):
                 sequences, labels = sequences.to(device), labels.to(device)
@@ -271,6 +252,8 @@ if __name__ == "__main__":
                 total_train_loss += loss.item()
                 num_train_batches += 1
             avg_train_loss = total_train_loss / num_train_batches
+            if CFG.logging:
+                wandb.log({"training loss": avg_train_loss})
             epoch_train_losses.append(avg_train_loss)
 
             # test loop for the current fold
@@ -282,6 +265,8 @@ if __name__ == "__main__":
                     total_test_loss += loss_function(y_pred, labels).item()
                     num_test_batches += 1
             avg_test_loss = total_test_loss / num_test_batches
+            if CFG.logging:
+                wandb.log({"test loss": avg_test_loss})
             epoch_test_losses.append(avg_test_loss)
             print(f"Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Test Loss: {avg_test_loss:.4f}")
 
@@ -301,7 +286,11 @@ if __name__ == "__main__":
         )
 
     model_train_loss = sum(all_folds_train_losses) / len(all_folds_train_losses)
+    if CFG.logging:
+        wandb.log({"model training loss": model_train_loss})
     print(f"Model train loss: {model_train_loss:.4f}")
 
     model_test_loss = sum(all_folds_test_losses) / len(all_folds_test_losses)
+    if CFG.logging:
+        wandb.log({"model test loss": model_test_loss})
     print(f"Model test loss: {model_test_loss:.4f}")
