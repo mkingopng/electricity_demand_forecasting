@@ -19,12 +19,12 @@ from tqdm import tqdm
 
 class LstmCFG:
     n_splits = 5
-    n_features = 35
+    n_features = 33
     input_size = 1  # the number of input features in dataset
     hidden_layer_size = 50
     output_size = 1
     learning_rate = 0.00001
-    batch_size = 1
+    batch_size = 128
     epochs = 10
     sequence_length = 336  # one week of 30-minute sample intervals
 
@@ -39,16 +39,16 @@ class DemandDataset(Dataset):
         return len(self.df) - self.sequence_length
 
     def __getitem__(self, index):
-        # Select the sequence of rows, but exclude the label column
-        sequence = self.df.iloc[index:index + self.sequence_length].drop(
-            self.label_col, axis=1)
+        # select the sequence of rows, but exclude label column
+        sequence = self.df.iloc[index:index + self.sequence_length].drop(self.label_col, axis=1)
 
-        # Get the label (target value) for the end of the sequence
+        # get the label (target value) for the end of the sequence
         label = self.df.iloc[index + self.sequence_length][self.label_col]
 
-        # Convert to tensor
+        # convert to tensor
         sequence_tensor = torch.tensor(sequence.values, dtype=torch.float)
-        label_tensor = torch.tensor(label, dtype=torch.float)
+        label_tensor = torch.tensor([label], dtype=torch.float)
+        # print(f"Sequence tensor shape: {sequence_tensor.shape}, Label tensor shape: {label_tensor.shape}")
         return sequence_tensor, label_tensor
 
 
@@ -56,18 +56,18 @@ class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_layer_size, output_size):
         super(LSTMModel, self).__init__()
         self.hidden_layer_size = hidden_layer_size
-        self.lstm = nn.LSTM(input_size, hidden_layer_size)
+        self.lstm = nn.LSTM(input_size, hidden_layer_size,
+                            batch_first=True)  # Ensure LSTM expects batch_size as the first dim
         self.linear = nn.Linear(hidden_layer_size, output_size)
 
     def forward(self, input_seq):
+        # No need for manual reshaping if using batch_first=True in LSTM initialization
+        # The input_seq is expected to have shape [batch_size, sequence_length, n_features]
         self.lstm.flatten_parameters()
-        lstm_out, _ = self.lstm(input_seq.view(
-            LstmCFG.sequence_length,
-            LstmCFG.batch_size,
-            LstmCFG.n_features
-        ))
-        predictions = self.linear(lstm_out.view(-1, self.hidden_layer_size))
-        return predictions[-1]
+        lstm_out, _ = self.lstm(input_seq)
+        last_timestep_output = lstm_out[:, -1, :]
+        predictions = self.linear(last_timestep_output)
+        return predictions
 
 
 def encode_cyclical_features(df, column, max_value):
@@ -80,7 +80,7 @@ def encode_cyclical_features(df, column, max_value):
 max_values = {
     'hour': 24,
     'dow': 7,
-    'doy': 365,  # or 366 for leap years if you want to be more precise
+    'doy': 365,  # or 366 for leap years to be more precise
     'month': 12,
     'quarter': 4
 }
@@ -90,6 +90,10 @@ if __name__ == "__main__":
     CFG = CFG()
 
     nsw_df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
+
+    nsw_df.drop(columns=['daily_avg_actual', 'daily_avg_forecast'], inplace=True)
+
+    # print(nsw_df.isna().sum())
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -205,9 +209,16 @@ if __name__ == "__main__":
                 sequences, labels = sequences.to(device), labels.to(device)
                 optimizer.zero_grad()
                 y_pred = model(sequences)
+                # print(f"Predictions shape: {y_pred.shape}, Labels shape: {labels.shape}")
                 loss = loss_function(y_pred, labels)
+                # if torch.isnan(loss):
+                # print("NaN detected in loss")
                 loss.backward()
                 optimizer.step()
+                # for param in model.parameters():
+                # if param.grad is not None and torch.isnan(
+                    #         param.grad).any():
+                # print("NaN detected in gradients")
 
             # Validation loop for the current fold
             model.eval()
