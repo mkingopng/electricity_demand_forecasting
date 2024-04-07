@@ -1,8 +1,3 @@
-"""
-- scaling is important. do you scale both training and target?
-- look ahead is the forecast horizon
-- look back: how many time steps to look back
-"""
 import os
 import torch
 import torch.nn as nn
@@ -52,7 +47,6 @@ class LSTMModel(nn.Module):
         self.hidden_layer_size = hidden_layer_size
         self.lstm = nn.LSTM(input_size, hidden_layer_size, batch_first=True)
         self.linear = nn.Linear(hidden_layer_size, output_size)
-        self.relu = nn.ReLU()
 
     def forward(self, input_seq):
         """
@@ -61,8 +55,7 @@ class LSTMModel(nn.Module):
         self.lstm.flatten_parameters()
         lstm_out, _ = self.lstm(input_seq)
         last_timestep_output = lstm_out[:, -1, :]
-        linear_output = self.linear(last_timestep_output)
-        predictions = self.relu(linear_output)
+        predictions = self.linear(last_timestep_output)
         return predictions
 
 
@@ -183,8 +176,8 @@ if __name__ == "__main__":
     cutoff_date = nsw_df.index.max() - pd.Timedelta(days=7)
 
     # split the data using cutoff date
-    train_df = nsw_df[nsw_df.index <= cutoff_date].copy()
-    test_df = nsw_df[nsw_df.index > cutoff_date].copy()
+    train_df = nsw_df[nsw_df.index <= cutoff_date]
+    test_df = nsw_df[nsw_df.index > cutoff_date]
 
     # normalize the training data, save scaler
     train_df, scalers = normalize_columns(
@@ -199,7 +192,7 @@ if __name__ == "__main__":
 
     # apply the saved scalers to the test data without fitting
     for original_col, normalized_col in column_mapping.items():
-        test_df.loc[:, normalized_col] = scalers[original_col].transform(test_df[[original_col]])
+        test_df[normalized_col] = scalers[original_col].transform(test_df[[original_col]])
 
     label_col = 'normalised_total_demand'
     input_size = len(input_features)
@@ -216,92 +209,23 @@ if __name__ == "__main__":
     all_folds_test_losses = []
     all_folds_train_losses = []
 
-    for fold, (train_index, val_index) in enumerate(tscv.split(train_df)):
-        print(f"Fold {fold + 1}/{LstmCFG.n_folds}")
-        epoch_train_losses = []
-        epoch_test_losses = []
+    sample_dataset = DemandDataset(
+        df=train_df[input_features + [label_col]],
+        label_col=label_col,
+        sequence_length=LstmCFG.seq_length
+    )
+    sample_loader = DataLoader(
+        sample_dataset,
+        batch_size=LstmCFG.batch_size,
+        shuffle=False  # Shuffle to get a random representative sample
+    )
 
-        # prepare train & test sequences
-        train_sequences = DemandDataset(
-            df=train_df.iloc[train_index],
-            label_col=label_col,
-            sequence_length=LstmCFG.seq_length
-        )
-        test_sequences = DemandDataset(
-            df=train_df.iloc[val_index],
-            label_col=label_col,
-            sequence_length=LstmCFG.seq_length
-        )
-        train_loader = DataLoader(
-            train_sequences,
-            batch_size=LstmCFG.batch_size,
-            shuffle=False
-        )
-        test_loader = DataLoader(
-            test_sequences,
-            batch_size=LstmCFG.batch_size,
-            shuffle=False
-        )
+    model = LSTMModel(
+        LstmCFG.n_features,
+        LstmCFG.hidden_layer_size,
+        LstmCFG.output_size
+    ).to(device)
 
-        # re-initialise model and optimiser at start of each fold
-        model = LSTMModel(
-            LstmCFG.n_features,
-            LstmCFG.hidden_layer_size,
-            LstmCFG.output_size
-        ).to(device)
+    criterion = nn.L1Loss()
 
-        optimizer = optim.Adam(model.parameters(), lr=LstmCFG.lr)
-
-        loss_function = nn.L1Loss()
-
-        # training loop for the current fold
-        for epoch in range(LstmCFG.epochs):
-            total_train_loss = 0
-            total_test_loss = 0
-            num_train_batches = 0
-            num_test_batches = 0
-            model.train()
-            for sequences, labels in tqdm(train_loader, desc=f"Training Epoch {epoch + 1}"):
-                sequences, labels = sequences.to(device), labels.to(device)
-                optimizer.zero_grad()
-                y_pred = model(sequences)
-                loss = loss_function(y_pred, labels)
-                loss.backward()
-                optimizer.step()
-                total_train_loss += loss.item()
-                num_train_batches += 1
-            avg_train_loss = total_train_loss / num_train_batches
-            epoch_train_losses.append(avg_train_loss)
-
-            # test loop for the current fold
-            model.eval()
-            with torch.no_grad():
-                for sequences, labels in tqdm(test_loader, desc=f"Test Epoch {epoch + 1}"):
-                    sequences, labels = sequences.to(device), labels.to(device)
-                    y_pred = model(sequences)
-                    total_test_loss += loss_function(y_pred, labels).item()
-                    num_test_batches += 1
-            avg_test_loss = total_test_loss / num_test_batches
-            epoch_test_losses.append(avg_test_loss)
-            print(f"Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Test Loss: {avg_test_loss:.4f}")
-
-        best_train_loss = min(epoch_train_losses)
-        all_folds_train_losses.append(best_train_loss)
-
-        best_test_loss = min(epoch_test_losses)
-        all_folds_test_losses.append(best_test_loss)
-
-        print(f"Best Train Loss in fold {fold + 1}: {best_train_loss:.4f}")
-        print(f"Best Test Loss in fold {fold + 1}: {best_test_loss:.4f}")
-
-        plot_loss_curves(
-            epoch_train_losses,
-            epoch_test_losses,
-            title=f"Fold {fold + 1} Loss Curves"
-        )
-
-    model_train_loss = sum(all_folds_train_losses) / len(all_folds_train_losses)
-    print(f"Model train loss: {model_train_loss:.4f}")
-
-    model_test_loss = sum(all_folds_test_losses) / len(all_folds_test_losses)
-    print(f"Model test loss: {model_test_loss:.4f}")
+    find_learning_rate(model, sample_loader, criterion)
