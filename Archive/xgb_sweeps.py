@@ -22,7 +22,7 @@ def objective():
     # create a trial to suggest hyperparameters
     trial = optuna.trial.FixedTrial({
         'gamma': wandb.config.gamma,
-        'learning_rate': wandb.config.learning_rate,
+        'learning_rate': wandb.config.lr,
         'max_depth': wandb.config.max_depth,
         'min_child_weight': wandb.config.min_child_weight,
         'subsample': wandb.config.subsample,
