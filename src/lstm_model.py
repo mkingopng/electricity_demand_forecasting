@@ -138,14 +138,7 @@ input_features = [
 if __name__ == "__main__":
     CFG = CFG()
 
-    if CFG.logging:
-        wandb.init(
-            project=CFG.wandb_project_name,
-            name=f'{CFG.wandb_run_name}_v{CFG.version}',
-            job_type='train_model'
-        )
-
-    wandb.config = {
+    wandb_config = {
         "n_folds": LstmCFG.n_folds,
         "n_features": LstmCFG.n_features,
         "hidden layers": LstmCFG.hidden_layer_size,
@@ -157,6 +150,14 @@ if __name__ == "__main__":
         "num_layers": LstmCFG.num_layers,
         "weight_decay": LstmCFG.weight_decay
     }
+
+    if CFG.logging:
+        wandb.init(
+            project=CFG.wandb_project_name,
+            name=f'{CFG.wandb_run_name}_v{CFG.version}',
+            config=wandb_config,
+            job_type='train_model'
+        )
 
     nsw_df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
 
