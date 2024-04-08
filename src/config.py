@@ -12,7 +12,7 @@ class CFG:
     wandb_project_name = 'electricity_demand_forecasting'
     # wandb_run_name = 'xgboost'
     wandb_run_name = 'lstm'
-    version = 5  # increment for each new experiment
+    version = 9  # increment for each new experiment
     logging = True  # set to True to enable W&B logging
     sweep_count = 10  # number of sweep runs
     params = {
@@ -57,6 +57,6 @@ class LstmCFG:
     hidden_layer_size = 50
     output_size = 1
     learning_rate = 0.001
-    batch_size = 1
+    batch_size = 256
     epochs = 10
-    sequence_length = 336  # 336 = one week of 30-minute sample intervals
+    sequence_length = 192  # 336 = one week of 30-minute sample intervals

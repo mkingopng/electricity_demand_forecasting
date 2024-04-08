@@ -20,7 +20,6 @@ pd.set_option('display.precision', 2)
 pd.options.display.max_colwidth = 25
 
 
-
 class WandbCallback(TrainingCallback):
     def __init__(self, period=1):
         self.period = period
@@ -101,7 +100,12 @@ def log_evaluation(period=1, show_stdv=True):
     """
     def callback(env):
         if env.iteration % period == 0:
-            wandb.log({"Training MAE": env.evaluation_result_list[0][1], "Validation MAE": env.evaluation_result_list[1][1]})
+            wandb.log(
+                {
+                    "Training MAE": env.evaluation_result_list[0][1],
+                    "Validation MAE": env.evaluation_result_list[1][1]
+                }
+            )
     return callback
 
 
@@ -168,8 +172,8 @@ if __name__ == "__main__":
     print(f'testy shape: {testy.shape}')
 
     # further split training into train & val sets
-    # nominally use the last 10% of training data as val
-    n_val = int(len(trainX) * 0.1)
+
+    n_val = int(len(trainX) * 0.1)  # use last 10% of data as validation set
     trainX, valX = trainX[:-n_val], trainX[-n_val:]
     trainy, valy = trainy[:-n_val], trainy[-n_val:]
 
@@ -212,7 +216,7 @@ if __name__ == "__main__":
 
     # generate a time index for plotting.
     # since we have 30-minute intervals, this can be represented similarly
-    # assuming the test set starts immediately after your training and val
+    # assuming the test set starts immediately after training and val
     # sets, we can calculate the start date as follows this requires the
     # original df to have a datetime index
     test_start_date = df.index[-len(testy)]  # get the start date for test set

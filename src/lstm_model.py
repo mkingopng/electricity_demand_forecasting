@@ -1,8 +1,11 @@
 """
-- scaling is important. do you scale both training and target?
-- look ahead is the forecast horizon
-- look back: how many time steps to look back
+lstm model
+- 2x LST layers
+- bidirectional LSTM
+- 50 hidden units
+- Tanh activation function
 """
+import gc
 import os
 import torch
 import torch.nn as nn
@@ -317,4 +320,8 @@ if __name__ == "__main__":
     model_gap = model_train_loss - model_test_loss
     if CFG.logging:
         wandb.log({"model gap": model_gap})
+        wandb.finish()
+
+    gc.collect()
+    torch.cuda.empty_cache()
 
