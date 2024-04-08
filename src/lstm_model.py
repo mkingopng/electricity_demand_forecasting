@@ -298,11 +298,11 @@ if __name__ == "__main__":
         print(f"Best Train Loss in fold {fold + 1}: {best_train_loss:.4f}")
         print(f"Best Test Loss in fold {fold + 1}: {best_test_loss:.4f}")
 
-        # plot_loss_curves(
-        #     epoch_train_losses,
-        #     epoch_test_losses,
-        #     title=f"Fold {fold + 1} Loss Curves"
-        # )
+        plot_loss_curves(
+            epoch_train_losses,
+            epoch_test_losses,
+            title=f"Fold {fold + 1} Loss Curves"
+        )
 
     model_train_loss = sum(all_folds_train_losses) / len(all_folds_train_losses)
     if CFG.logging:

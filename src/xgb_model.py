@@ -14,6 +14,13 @@ from config import CFG
 from xgb_functions import series_to_supervised
 
 
+pd.set_option('display.max_columns', 10)
+pd.set_option('display.max_rows', 25)
+pd.set_option('display.precision', 2)
+pd.options.display.max_colwidth = 25
+
+
+
 class WandbCallback(TrainingCallback):
     def __init__(self, period=1):
         self.period = period
@@ -112,7 +119,8 @@ def wandb_callback():
 if __name__ == "__main__":
     CFG = CFG()
 
-    sweep_id = wandb.sweep(CFG.sweep_config, project=CFG.wandb_project_name)
+
+    # sweep_id = wandb.sweep(CFG.sweep_config, project=CFG.wandb_project_name)
 
     config_dict = {
         "n_in": 6,
@@ -136,16 +144,28 @@ if __name__ == "__main__":
         )
 
     # load data
-    df = pd.read_csv('../data/NSW/final_df.csv', index_col=0)
+    df = pd.read_parquet('../data/NSW/nsw_df.parquet')
+    df.drop(columns=['daily_avg_actual', 'daily_avg_forecast'], inplace=True)
+    print("DataFrame shape:", df.shape)
+    print("DataFrame head:\n", df.head())
 
     data = series_to_supervised(df, n_in=CFG.n_in)  # prepare data
+    print("Transformed data shape:", data.shape)
 
     n_obs = CFG.n_in * len(df.columns)
 
     # split into input and outputs, with the last CFG.n_test rows for testing
     train, test = train_test_split(data.values, CFG.n_test)
+    print(f'train shape: {train.shape}')
+    print(f'test shape: {test.shape}')
+
     trainX, trainy = train[:, :-1], train[:, -1]
+    print(f'trainX shape: {trainX.shape}')
+    print(f'trainy shape: {trainy.shape}')
+
     testX, testy = test[:, :-1], test[:, -1]
+    print(f'testX shape: {testX.shape}')
+    print(f'testy shape: {testy.shape}')
 
     # further split training into train & val sets
     # nominally use the last 10% of training data as val
@@ -179,8 +199,10 @@ if __name__ == "__main__":
             early_stopping_rounds=50
         )
 
+    print(testy)
     # evaluate model
     yhat = bst.predict(dtest)
+    print(yhat)
     error = mean_absolute_error(testy, yhat)
 
     # assuming yhat is the prediction array and testy is the actual target
