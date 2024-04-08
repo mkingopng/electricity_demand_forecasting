@@ -1,6 +1,6 @@
 """
 lstm model
-- 2x LST layers
+- 2x LSTM layers
 - bidirectional LSTM
 - 50 hidden units
 - Tanh activation function
@@ -33,7 +33,7 @@ class LstmCFG:
     hidden_layer_size = 50
     output_size = 1
     lr = 0.0001
-    batch_size = 256
+    batch_size = 512
     epochs = 10
     seq_length = 336  # 336 one week of 30-minute sample intervals
     dropout = 0.2
@@ -59,16 +59,16 @@ class DemandDataset(Dataset):
 
 
 class LSTMModel(nn.Module):
-    def __init__(self, input_size, hidden_layer_size, output_size):
+    def __init__(self, input_size, hidden_layer_size, output_size, dropout, num_layers):
         super(LSTMModel, self).__init__()
         self.hidden_layer_size = hidden_layer_size
         self.lstm = nn.LSTM(
-            input_size,
-            hidden_layer_size,
+            input_size=input_size,
+            hidden_size=hidden_layer_size,
+            num_layers=num_layers,
             batch_first=True,
-            num_layers=LstmCFG.num_layers,
             bidirectional=True)
-        self.dropout = nn.Dropout(LstmCFG.dropout)
+        self.dropout = nn.Dropout(dropout)
         self.linear = nn.Linear(hidden_layer_size * 2, output_size)
         self.tanh = nn.Tanh()
 
@@ -95,6 +95,12 @@ def encode_cyclical_features(df, column, max_value):
 
 
 def plot_loss_curves(train_losses, test_losses, title="Loss Curves"):
+    """
+    plot the training and test loss curves for each epoch
+    :param train_losses: list of training losses
+    :param test_losses: list of test losses
+    :param title: title of the plot
+    """
     epochs = range(1, len(train_losses) + 1)
     plt.plot(epochs, train_losses, 'bo-', label='Training Loss')
     plt.plot(epochs, test_losses, 'ro-', label='Test Loss')
@@ -171,8 +177,8 @@ if __name__ == "__main__":
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # define a cutoff date 7 days before the last date in df
-    cutoff_date = nsw_df.index.max() - pd.Timedelta(days=7)
+    # define a cutoff date from the last date in df
+    cutoff_date = nsw_df.index.max() - pd.Timedelta(days=56)
 
     # split the data using cutoff date
     train_df = nsw_df[nsw_df.index <= cutoff_date].copy()
@@ -237,9 +243,11 @@ if __name__ == "__main__":
 
         # re-initialise model and optimiser at start of each fold
         model = LSTMModel(
-            LstmCFG.n_features,
-            LstmCFG.hidden_layer_size,
-            LstmCFG.output_size
+            input_size=LstmCFG.input_size,
+            hidden_layer_size=LstmCFG.hidden_layer_size,
+            output_size=LstmCFG.output_size,
+            dropout=LstmCFG.dropout,
+            num_layers=LstmCFG.num_layers
         ).to(device)
 
         optimizer = optim.Adam(
