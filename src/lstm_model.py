@@ -35,6 +35,7 @@ class LstmCFG:
     seq_length = 336  # 336 one week of 30-minute sample intervals
     dropout = 0.2
     num_layers = 2
+    weight_decay = 1e-5
 
 
 class DemandDataset(Dataset):
@@ -58,10 +59,15 @@ class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_layer_size, output_size):
         super(LSTMModel, self).__init__()
         self.hidden_layer_size = hidden_layer_size
-        self.lstm = nn.LSTM(input_size, hidden_layer_size, batch_first=True, num_layers=LstmCFG.num_layers, bidirectional=True)
+        self.lstm = nn.LSTM(
+            input_size,
+            hidden_layer_size,
+            batch_first=True,
+            num_layers=LstmCFG.num_layers,
+            bidirectional=True)
         self.dropout = nn.Dropout(LstmCFG.dropout)
         self.linear = nn.Linear(hidden_layer_size * 2, output_size)
-        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
 
     def forward(self, input_seq):
         """
@@ -72,7 +78,7 @@ class LSTMModel(nn.Module):
         last_timestep_output = lstm_out[:, -1, :]
         dropped_out = self.dropout(last_timestep_output)
         linear_output = self.linear(dropped_out)
-        predictions = self.relu(linear_output)
+        predictions = self.tanh(linear_output)
         return predictions
 
 
@@ -147,7 +153,9 @@ if __name__ == "__main__":
         "batch_size": LstmCFG.batch_size,
         "epochs": LstmCFG.epochs,
         "sequence_length": LstmCFG.seq_length,
-        "dropout": LstmCFG.dropout
+        "dropout": LstmCFG.dropout,
+        "num_layers": LstmCFG.num_layers,
+        "weight_decay": LstmCFG.weight_decay
     }
 
     nsw_df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
@@ -230,7 +238,11 @@ if __name__ == "__main__":
             LstmCFG.output_size
         ).to(device)
 
-        optimizer = optim.Adam(model.parameters(), lr=LstmCFG.lr)
+        optimizer = optim.Adam(
+            model.parameters(),
+            lr=LstmCFG.lr,
+            weight_decay=LstmCFG.weight_decay
+        )
 
         loss_function = nn.L1Loss()
 
@@ -267,8 +279,14 @@ if __name__ == "__main__":
             avg_test_loss = total_test_loss / num_test_batches
             if CFG.logging:
                 wandb.log({"test loss": avg_test_loss})
+                wandb.log({"gap": avg_train_loss - avg_test_loss})
             epoch_test_losses.append(avg_test_loss)
-            print(f"Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Test Loss: {avg_test_loss:.4f}")
+            print(f"""
+            Epoch {epoch + 1}, 
+            Train Loss: {avg_train_loss:.4f}, 
+            Test Loss: {avg_test_loss:.4f},
+            gap: {avg_train_loss - avg_test_loss:.4f}
+            """)
 
         best_train_loss = min(epoch_train_losses)
         all_folds_train_losses.append(best_train_loss)
@@ -279,11 +297,11 @@ if __name__ == "__main__":
         print(f"Best Train Loss in fold {fold + 1}: {best_train_loss:.4f}")
         print(f"Best Test Loss in fold {fold + 1}: {best_test_loss:.4f}")
 
-        plot_loss_curves(
-            epoch_train_losses,
-            epoch_test_losses,
-            title=f"Fold {fold + 1} Loss Curves"
-        )
+        # plot_loss_curves(
+        #     epoch_train_losses,
+        #     epoch_test_losses,
+        #     title=f"Fold {fold + 1} Loss Curves"
+        # )
 
     model_train_loss = sum(all_folds_train_losses) / len(all_folds_train_losses)
     if CFG.logging:
@@ -294,3 +312,8 @@ if __name__ == "__main__":
     if CFG.logging:
         wandb.log({"model test loss": model_test_loss})
     print(f"Model test loss: {model_test_loss:.4f}")
+
+    model_gap = model_train_loss - model_test_loss
+    if CFG.logging:
+        wandb.log({"model gap": model_gap})
+
