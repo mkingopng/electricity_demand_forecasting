@@ -10,49 +10,14 @@ from sklearn.model_selection import ParameterGrid
 from sklearn.base import clone
 import wandb
 import matplotlib.pyplot as plt
+from config import CFG
+from xgb_functions import series_to_supervised
 
 
-class CFG:
-    n_in = 6  # 6 lag intervals
-    n_test = 336  # 7 days of 30-minute sample intervals
-    wandb_project_name = 'electricity_demand_forecasting'
-    wandb_run_name = 'xgboost'
-    version = 13  # increment for each new experiment
-    logging = True  # set to True to enable W&B logging
-    sweep_count = 10  # number of sweep runs
-    params = {
-        'objective': 'reg:squarederror',
-        'gamma': 4.592513457496951,  # def 0
-        'learning_rate': 0.07984076257805875,  # def 0.1
-        'max_depth': 8,
-        'min_child_weight': 20,  # def 0.1
-        'nthread': 4,  # ?
-        'random_state': 42,
-        'reg_alpha': 0.7863437272577511,
-        'reg_lambda': 3.475149811652308,  # def 1
-        'eval_metric': ['mae'],
-        'tree_method': 'hist'
-    }
-    sweep_config = {
-        "method": "random",
-        "parameters": {
-            "learning_rate": {
-                "min": 0.001,
-                "max": 1.0
-            },
-            "gamma": {
-                "min": 0.001,
-                "max": 1.0
-            },
-            "min_child_weight": {
-                "min": 1,
-                "max": 150
-            },
-            "early_stopping_rounds": {
-                "values": [10, 20, 30, 40]
-            },
-        }
-    }
+pd.set_option('display.max_columns', 10)
+pd.set_option('display.max_rows', 25)
+pd.set_option('display.precision', 2)
+pd.options.display.max_colwidth = 25
 
 
 class WandbCallback(TrainingCallback):
@@ -65,47 +30,6 @@ class WandbCallback(TrainingCallback):
             mae = evals_log['train']['mae'][-1]
             wandb.log({'train-mae': mae})
         return False
-
-
-def series_to_supervised(data, n_in=1, n_out=1, dropnan=True, target_var='TOTALDEMAND'):
-    """
-    frame a time series dataset as a supervised learning dataset, required as
-    in input for xgb
-    :param data:
-    :param n_in:
-    :param n_out:
-    :param dropnan:
-    :param target_var:
-    :return:
-    """
-    n_vars = 1 if type(data) is list else data.shape[1]
-    df = pd.DataFrame(data)
-    cols, names = list(), list()
-
-    for i in range(n_in, 0, -1):  # input sequence (t-n, ... t-1)
-        cols.append(df.drop(columns=target_var).shift(i))
-        names += [('%s(t-%d)' % (df.columns[j], i)) for j in range(n_vars) if
-                  df.columns[j] != target_var]
-
-    # forecast sequence (t+1, ... t+n_out-1), only for predictors, not target
-    for i in range(1, n_out):
-        cols.append(df.drop(columns=target_var).shift(-i))
-        names += [('%s(t+%d)' % (df.columns[j], i)) for j in range(n_vars) if
-                  df.columns[j] != target_var]
-
-    # add the target variable column at t (current timestep)
-    cols.append(df[[target_var]])
-    names.append('%s(t)' % target_var)
-
-    # combine everything
-    agg = pd.concat(cols, axis=1)
-    agg.columns = names
-
-    # drop records with NaN values
-    if dropnan:
-        agg.dropna(inplace=True)
-
-    return agg
 
 
 def train_test_split(data, n_test):
@@ -153,8 +77,8 @@ def diy_cv(model, param_grid, splits, trainX, trainy):
         for train_idx, val_idx in splits.split(trainX):
             clone_model = clone(model)
             clone_model.set_params(**params)
-            X_train_fold, y_train_fold = trainX.iloc[train_idx], trainy.iloc[train_idx]  # Corrected to use .iloc for trainy
-            X_val_fold, y_val_fold = trainX.iloc[val_idx], trainy.iloc[val_idx]  # Corrected to use .iloc for trainy
+            X_train_fold, y_train_fold = trainX.iloc[train_idx], trainy.iloc[train_idx]
+            X_val_fold, y_val_fold = trainX.iloc[val_idx], trainy.iloc[val_idx]
             clone_model.fit(X_train_fold, y_train_fold)
             predictions = clone_model.predict(X_val_fold)
             score = mean_absolute_error(y_val_fold, predictions)
@@ -176,7 +100,12 @@ def log_evaluation(period=1, show_stdv=True):
     """
     def callback(env):
         if env.iteration % period == 0:
-            wandb.log({"Training MAE": env.evaluation_result_list[0][1], "Validation MAE": env.evaluation_result_list[1][1]})
+            wandb.log(
+                {
+                    "Training MAE": env.evaluation_result_list[0][1],
+                    "Validation MAE": env.evaluation_result_list[1][1]
+                }
+            )
     return callback
 
 
@@ -194,7 +123,8 @@ def wandb_callback():
 if __name__ == "__main__":
     CFG = CFG()
 
-    sweep_id = wandb.sweep(CFG.sweep_config, project=CFG.wandb_project_name)
+
+    # sweep_id = wandb.sweep(CFG.sweep_config, project=CFG.wandb_project_name)
 
     config_dict = {
         "n_in": 6,
@@ -218,20 +148,32 @@ if __name__ == "__main__":
         )
 
     # load data
-    df = pd.read_csv('../data/NSW/final_df.csv', index_col=0)
+    df = pd.read_parquet('../data/NSW/nsw_df.parquet')
+    df.drop(columns=['daily_avg_actual', 'daily_avg_forecast'], inplace=True)
+    print("DataFrame shape:", df.shape)
+    print("DataFrame head:\n", df.head())
 
     data = series_to_supervised(df, n_in=CFG.n_in)  # prepare data
+    print("Transformed data shape:", data.shape)
 
     n_obs = CFG.n_in * len(df.columns)
 
     # split into input and outputs, with the last CFG.n_test rows for testing
     train, test = train_test_split(data.values, CFG.n_test)
+    print(f'train shape: {train.shape}')
+    print(f'test shape: {test.shape}')
+
     trainX, trainy = train[:, :-1], train[:, -1]
+    print(f'trainX shape: {trainX.shape}')
+    print(f'trainy shape: {trainy.shape}')
+
     testX, testy = test[:, :-1], test[:, -1]
+    print(f'testX shape: {testX.shape}')
+    print(f'testy shape: {testy.shape}')
 
     # further split training into train & val sets
-    # nominally use the last 10% of training data as val
-    n_val = int(len(trainX) * 0.1)
+
+    n_val = int(len(trainX) * 0.1)  # use last 10% of data as validation set
     trainX, valX = trainX[:-n_val], trainX[-n_val:]
     trainy, valy = trainy[:-n_val], trainy[-n_val:]
 
@@ -261,8 +203,10 @@ if __name__ == "__main__":
             early_stopping_rounds=50
         )
 
+    print(testy)
     # evaluate model
     yhat = bst.predict(dtest)
+    print(yhat)
     error = mean_absolute_error(testy, yhat)
 
     # assuming yhat is the prediction array and testy is the actual target
@@ -272,7 +216,7 @@ if __name__ == "__main__":
 
     # generate a time index for plotting.
     # since we have 30-minute intervals, this can be represented similarly
-    # assuming the test set starts immediately after your training and val
+    # assuming the test set starts immediately after training and val
     # sets, we can calculate the start date as follows this requires the
     # original df to have a datetime index
     test_start_date = df.index[-len(testy)]  # get the start date for test set
