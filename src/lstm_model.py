@@ -230,7 +230,9 @@ if __name__ == "__main__":
         "sequence_length": LstmCFG.seq_length,
         "dropout": LstmCFG.dropout,
         "num_layers": LstmCFG.num_layers,
-        "weight_decay": LstmCFG.weight_decay
+        "weight_decay": LstmCFG.weight_decay,
+        "lrs_step_size": LstmCFG.lrs_step_size,
+        "lrs_gamma": LstmCFG.lrs_gamma
     }
 
     if CFG.logging:
@@ -404,6 +406,7 @@ if __name__ == "__main__":
                 )
             epoch_test_losses.append(avg_test_loss)
             print(f"""
+            Learning Rate: {lr_scheduler.get_last_lr()[0]:.6f},
             Epoch {epoch + 1}, 
             Train Loss: {avg_train_loss:.4f}, 
             Test Loss: {avg_test_loss:.4f},

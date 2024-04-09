@@ -12,7 +12,7 @@ class CFG:
     wandb_project_name = 'electricity_demand_forecasting'
     # wandb_run_name = 'xgboost'
     wandb_run_name = 'lstm'
-    version = 12  # increment for each new experiment
+    version = 13  # increment for each new experiment
     logging = True  # set to True to enable W&B logging
     sweep_count = 10  # number of sweep runs
     params = {
