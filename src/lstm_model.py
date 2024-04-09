@@ -1,4 +1,7 @@
 """
+note: this model runs fine on cpu. unlike unstructured data, this kind of
+problem doesn't get a huge benefit from using GPU
+
 lstm model
 - 2x LSTM layers
 - bidirectional LSTM
@@ -40,6 +43,8 @@ class LstmCFG:
     dropout = 0.2
     num_layers = 2
     weight_decay = 1e-5
+    lrs_step_size = 3
+    lrs_gamma = 0.05
 
 
 class DemandDataset(Dataset):
@@ -153,13 +158,16 @@ def plot_loss_curves(train_losses, test_losses, title="Loss Curves"):
     :param title: title of the plot
     """
     epochs = range(1, len(train_losses) + 1)
-    plt.plot(epochs, train_losses, 'bo-', label='Training Loss')
-    plt.plot(epochs, test_losses, 'ro-', label='Test Loss')
-    plt.title(title)
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.show()
+    fig, ax = plt.subplots()
+    ax.plot(epochs, train_losses, 'bo-', label='Training Loss')
+    ax.plot(epochs, test_losses, 'ro-', label='Test Loss')
+    ax.set_title(title)
+    ax.set_xlabel("Epochs")
+    ax.set_ylabel("Loss")
+    ax.legend()
+    if CFG.logging:
+        wandb.log({title: wandb.Image(fig)})
+    plt.close(fig)
 
 
 def set_seed(seed_value=42):
@@ -335,10 +343,10 @@ if __name__ == "__main__":
             weight_decay=LstmCFG.weight_decay
         )
 
-        scheduler = torch.optim.lr_scheduler.StepLR(
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer,
-            step_size=30,
-            gamma=0.1
+            step_size=LstmCFG.lrs_step_size,
+            gamma=LstmCFG.lrs_gamma
         )
 
         loss_function = nn.L1Loss()
@@ -367,9 +375,9 @@ if __name__ == "__main__":
                 optimizer.step()
                 total_train_loss += loss.item()
                 num_train_batches += 1
-            scheduler.step()
+            lr_scheduler.step()
             if CFG.logging:
-                wandb.log({"learning_rate": scheduler.get_last_lr()[0]})
+                wandb.log({"learning_rate": lr_scheduler.get_last_lr()[0]})
 
             avg_train_loss = total_train_loss / num_train_batches
             if CFG.logging:
@@ -405,9 +413,13 @@ if __name__ == "__main__":
             early_stopping(avg_test_loss, model)
             if early_stopping.early_stop:
                 print("Early stopping triggered")
-                torch.save(model.state_dict(), 'model_early_stop.pt')
+                torch.save(model.state_dict(), 'model_checkpoint.pt')
                 break
-        model.load_state_dict(torch.load('checkpoint.pt'))
+        model.load_state_dict(torch.load('model_checkpoint.pt'))
+        artifact = wandb.Artifact('model_artifact', type='model')
+        artifact.add_file('model_checkpoint.pt')
+        if CFG.logging:
+            wandb.save('model_checkpoint.pt')
 
         best_train_loss = min(epoch_train_losses)
         all_folds_train_losses.append(best_train_loss)
@@ -421,7 +433,7 @@ if __name__ == "__main__":
         plot_loss_curves(
             epoch_train_losses,
             epoch_test_losses,
-            title=f"Fold {fold + 1} Loss Curves"
+            title=f"Fold {fold} Loss Curves"
         )
 
     model_train_loss = sum(all_folds_train_losses) / len(all_folds_train_losses)
@@ -444,20 +456,20 @@ if __name__ == "__main__":
 
     # inference
 
-    # Initialize the model
-    model = LSTMModel(
-        input_size=LstmCFG.input_size,
-        hidden_layer_size=LstmCFG.hidden_layer_size,
-        output_size=LstmCFG.output_size,
-        dropout=LstmCFG.dropout,
-        num_layers=LstmCFG.num_layers
-    )
-
-    # Load the state dictionary
-    model.load_state_dict(torch.load('model_final.pt'))
-
-    # call model.eval() to set dropout and batch normalization layers to
-    # evaluation mode before running inference.
-    model.eval()
-
-    # Now you can use model for inference
+    # # initialize the model
+    # model = LSTMModel(
+    #     input_size=LstmCFG.input_size,
+    #     hidden_layer_size=LstmCFG.hidden_layer_size,
+    #     output_size=LstmCFG.output_size,
+    #     dropout=LstmCFG.dropout,
+    #     num_layers=LstmCFG.num_layers
+    # )
+    #
+    # # load the state dictionary
+    # model.load_state_dict(torch.load('model_final.pt'))
+    #
+    # # call model.eval() to set dropout and batch normalization layers to
+    # # evaluation mode before running inference.
+    # model.eval()
+    #
+    # # Now you can use model for inference
