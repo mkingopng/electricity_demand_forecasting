@@ -34,17 +34,17 @@ class LstmCFG:
     n_folds = 5
     n_features = 33
     input_size = 33
-    hidden_layer_size = 50
+    hidden_units = 50
     output_size = 1
     lr = 0.0001
     batch_size = 256
     epochs = 10
     seq_length = 336  # 336 one week of 30-minute sample intervals
     dropout = 0.2
-    num_layers = 2
+    num_layers = 3
     weight_decay = 1e-5
     lrs_step_size = 3
-    lrs_gamma = 0.05
+    lrs_gamma = 0.3
 
 
 class DemandDataset(Dataset):
@@ -223,7 +223,7 @@ if __name__ == "__main__":
     wandb_config = {
         "n_folds": LstmCFG.n_folds,
         "n_features": LstmCFG.n_features,
-        "hidden layers": LstmCFG.hidden_layer_size,
+        "hidden layers": LstmCFG.hidden_units,
         "learning_rate": LstmCFG.lr,
         "batch_size": LstmCFG.batch_size,
         "epochs": LstmCFG.epochs,
@@ -253,14 +253,18 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # define a cutoff date from the last date in df
-    cutoff_date = nsw_df.index.max() - pd.Timedelta(days=7)
+    cutoff_date1 = nsw_df.index.max() - pd.Timedelta(days=7)
+
+    cutoff_date2 = cutoff_date1 - pd.Timedelta(days=14)
 
     # split the data using cutoff date
-    train_df = nsw_df[nsw_df.index <= cutoff_date].copy()
+    train_df = nsw_df[nsw_df.index <= cutoff_date2].copy()
     # print(f'train_df columns: {train_df.shape[1]}')  # dubugging line
 
-    test_df = nsw_df[nsw_df.index > cutoff_date].copy()
+    # test_df = nsw_df[nsw_df.index >= & <= cutoff_date1].copy()
     # print(f'nsw_df columns: {test_df.shape[1]}')  # dubugging line
+
+    # val_df = nsw_df[nsw_df.index > cutoff_date1].copy()
 
     # normalize the training data, save scaler
     train_df, scalers = normalize_columns(
@@ -333,7 +337,7 @@ if __name__ == "__main__":
         # re-initialise model and optimiser at start of each fold
         model = LSTMModel(
             input_size=LstmCFG.input_size,
-            hidden_layer_size=LstmCFG.hidden_layer_size,
+            hidden_layer_size=LstmCFG.hidden_units,
             output_size=LstmCFG.output_size,
             dropout=LstmCFG.dropout,
             num_layers=LstmCFG.num_layers
@@ -406,8 +410,9 @@ if __name__ == "__main__":
                 )
             epoch_test_losses.append(avg_test_loss)
             print(f"""
+            Epoch {epoch + 1},
+            
             Learning Rate: {lr_scheduler.get_last_lr()[0]:.6f},
-            Epoch {epoch + 1}, 
             Train Loss: {avg_train_loss:.4f}, 
             Test Loss: {avg_test_loss:.4f},
             gap: {avg_train_loss - avg_test_loss:.4f}
