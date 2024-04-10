@@ -7,12 +7,12 @@ class CFG:
     data_path = './../data/NSW'
     img_dim1 = 20
     img_dim2 = 10
-    n_in = 6  # 6 lag intervals
+    n_in = 6  # 6 lag features
     n_test = 336  # 7 days of 30-minute sample intervals
     wandb_project_name = 'electricity_demand_forecasting'
-    wandb_run_name = 'xgboost'
-    # wandb_run_name = 'lstm'
-    version = 17  # increment for each new experiment
+    # wandb_run_name = 'xgboost'
+    wandb_run_name = 'lstm'
+    version = 24  # increment for each new experiment
     logging = True  # set to True to enable W&B logging
     sweep_count = 10  # number of sweep runs
     params = {

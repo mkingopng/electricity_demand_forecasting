@@ -3,10 +3,11 @@ note: this model runs fine on cpu. unlike unstructured data, this kind of
 problem doesn't get a huge benefit from using GPU
 
 lstm model
-- 2x LSTM layers
+- 4x LSTM layers
 - bidirectional LSTM
 - 50 hidden units
-- Tanh activation function
+- linear layer
+- Tanh activation layer
 """
 import gc
 import os
@@ -31,32 +32,52 @@ wandb.login(key=wandb_api_key)
 
 
 class LstmCFG:
-    n_folds = 5
+    n_folds = 10
+    epochs = 30
     n_features = 33
     input_size = 33
     hidden_units = 50
     output_size = 1
-    lr = 0.0001
-    batch_size = 256
-    epochs = 10
+    lr = 0.0002
+    batch_size = 1024
     seq_length = 336  # 336 one week of 30-minute sample intervals
     dropout = 0.2
-    num_layers = 3
-    weight_decay = 1e-5
-    lrs_step_size = 3
-    lrs_gamma = 0.3
+    num_layers = 4
+    weight_decay = 0.00001
+    lrs_step_size = 6
+    lrs_gamma = 0.4
+    train = True
 
 
 class DemandDataset(Dataset):
     def __init__(self, df, label_col, sequence_length=LstmCFG.seq_length):
+        """
+        Initializes the dataset with the dataframe, label column, and sequence
+        length
+        :param df: The dataframe containing the dataset
+        :param label_col: The target variable
+        :param sequence_length:
+        :return:
+        """
         self.df = df
         self.label_col = label_col
         self.sequence_length = sequence_length
 
     def __len__(self):
+        """
+        returns the total number of samples that can be generated from the
+        dataframe
+        :return: the total number of samples
+        """
         return len(self.df) - self.sequence_length
 
     def __getitem__(self, index):
+        """
+        generates a sample from the dataset at the specified index
+        :param index: the index of the sample to generate
+        :return: (tuple) a tuple containing the sequence tensor and the label
+        tensor
+        """
         sequence = self.df.iloc[index:index + self.sequence_length].drop(self.label_col, axis=1)
         label = self.df.iloc[index + self.sequence_length][self.label_col]
         sequence_tensor = torch.tensor(sequence.values, dtype=torch.float)
@@ -66,6 +87,15 @@ class DemandDataset(Dataset):
 
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_layer_size, output_size, dropout, num_layers):
+        """
+        initialises an LSTM model with specified architecture parameters
+        :param input_size: the number of input features per time step
+        :param hidden_layer_size: the number of hidden units in the LSTM layer
+        :param output_size: the number of output vectors
+        :param dropout: the dropout rate for dropout layers to prevent
+        over-fitting
+        :param num_layers: the number of layers in the LSTM
+        """
         super(LSTMModel, self).__init__()
         self.hidden_layer_size = hidden_layer_size
         self.lstm = nn.LSTM(
@@ -80,7 +110,9 @@ class LSTMModel(nn.Module):
 
     def forward(self, input_seq):
         """
-        forward pass through the network
+        defines the forward pass of the model
+        :param input_seq: (Tensor) The input sequence to the LSTM model
+        :return: Tensor: the predictions made by the model
         """
         self.lstm.flatten_parameters()
         lstm_out, _ = self.lstm(input_seq)
@@ -97,15 +129,15 @@ class LSTMModel(nn.Module):
 class EarlyStopping:
     def __init__(self, patience=5, delta=0, path='checkpoint.pt', verbose=False):
         """
-        Args:
-            patience (int): How long to wait after last time validation loss improved.
-                            Default: 5
-            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
-                           Default: 0
-            path (str): Path for the checkpoint to be saved to.
-                        Default: 'checkpoint.pt'
-            verbose (bool): If True, prints a message for each validation loss improvement.
-                            Default: False
+        initializes the EarlyStopping mechanic with custom configuration
+        :param patience: (int) number of epochs with no improvement after which
+        training will be stopped. default: 5.
+        :param delta: (float) Minimum change in monitored quantity to qualify
+        as an improvement. default: 0.
+        :param path: (str) Path for the checkpoint to be saved to.
+        default: 'checkpoint.pt'
+        :param verbose: (bool) If True, prints a message for each validation
+        loss improvement. Default: False
         """
         self.patience = patience
         self.counter = 0
@@ -117,8 +149,13 @@ class EarlyStopping:
         self.verbose = verbose
 
     def __call__(self, val_loss, model):
+        """
+        calls the EarlyStopping instance during training to check if early
+        stopping criteria are met
+        :param val_loss: the current validation loss
+        :param model: the model being trained
+        """
         score = -val_loss
-
         if self.best_score is None:
             self.best_score = score
             self.save_checkpoint(val_loss, model)
@@ -134,7 +171,11 @@ class EarlyStopping:
             self.counter = 0
 
     def save_checkpoint(self, val_loss, model):
-        """Saves model when validation loss decrease"""
+        """
+        Saves the current best model if the validation loss decreases
+        :param val_loss: the current validation loss
+        :param model: the model to be saved
+        """
         if self.verbose:
             print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
         torch.save(model.state_dict(), self.path)
@@ -143,7 +184,15 @@ class EarlyStopping:
 
 def encode_cyclical_features(df, column, max_value):
     """
-    encode a cyclical feature using sine and cosine transformations
+    transforms a cyclical feature in a DataFrame to two features using sine and
+    cosine transformation to capture the cyclical relationship in a way that
+    can be understood by machine learning models
+    :param df: df containing the cyclical feature to be encoded
+    :param column: name of the column to be transformed
+    :param max_value: The maximum value the cyclical feature can take. used to
+    normalise the data
+    :return: DataFrame with the original column replaced by its sine and cosine
+    encoded values
     """
     df.loc[:, column + '_sin'] = np.sin(2 * np.pi * df[column] / max_value)
     df.loc[:, column + '_cos'] = np.cos(2 * np.pi * df[column] / max_value)
@@ -171,7 +220,9 @@ def plot_loss_curves(train_losses, test_losses, title="Loss Curves"):
 
 
 def set_seed(seed_value=42):
-    """Set seed for reproducibility."""
+    """
+    Set seed for reproducibility
+    """
     random.seed(seed_value)  # Python random module
     np.random.seed(seed_value)  # Numpy
     torch.manual_seed(seed_value)  # PyTorch
@@ -232,7 +283,7 @@ if __name__ == "__main__":
         "num_layers": LstmCFG.num_layers,
         "weight_decay": LstmCFG.weight_decay,
         "lrs_step_size": LstmCFG.lrs_step_size,
-        "lrs_gamma": LstmCFG.lrs_gamma
+        "lrs_gamma": LstmCFG.lrs_gamma,
     }
 
     if CFG.logging:
@@ -255,13 +306,14 @@ if __name__ == "__main__":
     # define a cutoff date from the last date in df
     cutoff_date1 = nsw_df.index.max() - pd.Timedelta(days=7)
 
-    cutoff_date2 = cutoff_date1 - pd.Timedelta(days=14)
+    # cutoff_date2 = cutoff_date1 - pd.Timedelta(days=14)
+    # fix_me: need to move from 2-way split to 3-way split
 
     # split the data using cutoff date
-    train_df = nsw_df[nsw_df.index <= cutoff_date2].copy()
+    train_df = nsw_df[nsw_df.index <= cutoff_date1].copy()
     # print(f'train_df columns: {train_df.shape[1]}')  # dubugging line
 
-    # test_df = nsw_df[nsw_df.index >= & <= cutoff_date1].copy()
+    test_df = nsw_df[nsw_df.index >= cutoff_date1].copy()
     # print(f'nsw_df columns: {test_df.shape[1]}')  # dubugging line
 
     # val_df = nsw_df[nsw_df.index > cutoff_date1].copy()
@@ -320,6 +372,7 @@ if __name__ == "__main__":
         )
         # print(f"test sequences: {len(test_sequences)}")  # dubugging line
 
+        # train loader
         train_loader = DataLoader(
             train_sequences,
             batch_size=LstmCFG.batch_size,
@@ -327,6 +380,7 @@ if __name__ == "__main__":
         )
         # print(f"train loader: {len(train_loader)}")  # dubugging line
 
+        # test loader
         test_loader = DataLoader(
             test_sequences,
             batch_size=LstmCFG.batch_size,
@@ -343,20 +397,24 @@ if __name__ == "__main__":
             num_layers=LstmCFG.num_layers
         ).to(device)
 
+        # optimiser
         optimizer = optim.Adam(
             model.parameters(),
             lr=LstmCFG.lr,
             weight_decay=LstmCFG.weight_decay
         )
 
+        # learning rate scheduler
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer,
             step_size=LstmCFG.lrs_step_size,
             gamma=LstmCFG.lrs_gamma
         )
 
+        # loss function
         loss_function = nn.L1Loss()
 
+        # early stopping
         early_stopping = EarlyStopping(
             patience=10,
             verbose=True,
@@ -391,7 +449,7 @@ if __name__ == "__main__":
 
             epoch_train_losses.append(avg_train_loss)
 
-            # test loop for the current fold
+            # test loop for current fold
             model.eval()
             with torch.no_grad():
                 for sequences, labels in tqdm(test_loader, desc=f"Test Epoch {epoch + 1}"):
@@ -411,7 +469,6 @@ if __name__ == "__main__":
             epoch_test_losses.append(avg_test_loss)
             print(f"""
             Epoch {epoch + 1},
-            
             Learning Rate: {lr_scheduler.get_last_lr()[0]:.6f},
             Train Loss: {avg_train_loss:.4f}, 
             Test Loss: {avg_test_loss:.4f},
@@ -462,7 +519,8 @@ if __name__ == "__main__":
     gc.collect()
     torch.cuda.empty_cache()
 
-    # inference
+    # todo: wandb sweeps to optimise hyperparameters
+    # todo: inference, ensemble
 
     # # initialize the model
     # model = LSTMModel(
@@ -472,12 +530,12 @@ if __name__ == "__main__":
     #     dropout=LstmCFG.dropout,
     #     num_layers=LstmCFG.num_layers
     # )
-    #
+
     # # load the state dictionary
     # model.load_state_dict(torch.load('model_final.pt'))
-    #
+
     # # call model.eval() to set dropout and batch normalization layers to
     # # evaluation mode before running inference.
     # model.eval()
-    #
+
     # # Now you can use model for inference
