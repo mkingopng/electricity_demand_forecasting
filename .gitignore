@@ -186,7 +186,6 @@ data/operational_demand_forecast_hh_consolidated.parquet
 data/public_actual_operational_demand_five_min_consolidated.parquet
 data/public_prices_consolidated.parquet
 /src/wandb/
-/images/
 /dodgy_models/wandb/
 /Archive/Assessment 2 Draft.odt
 /Archive/Assessment 2 Michael Kingston.pdf
@@ -195,3 +194,4 @@ data/public_prices_consolidated.parquet
 /Archive/week 2 reflections.odt
 /Archive/week 3 reflections.odt
 /Archive/week 4 reflections.odt
+/trained_models/trained_prophet_model.json
