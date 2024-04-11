@@ -1,6 +1,9 @@
 """
-Prophet is a univariate additive time series model, which supports trends,
-seasonality, and holidays
+Prophet is an additive time series model, which supports trends,
+seasonality, and holidays.
+
+It is multivatiate, and has built in cross validation, changepoint and other
+really useful features
 """
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
