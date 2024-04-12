@@ -9,7 +9,7 @@ Complete the information below regarding your group.
 ## Group and project information
 
 ### Group members and zIDs
-- Noel Singh (zID1) - role tbc
+- Noel Singh (z5267015) - role tbc
 - Reuben Bowell (z5382909) - role tbc
 - William Stephan (z3403800) - role tbc
 - Michael Kingston (z5372750) - role tbc
