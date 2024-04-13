@@ -9,8 +9,9 @@ from hmmlearn import hmm
 import warnings
 warnings.filterwarnings('ignore')
 
-data = pd.read_csv("../data/NSW/final_df.csv", index_col=0)
+data = pd.read_parquet("../data/NSW/nsw_df.parquet")
 df = data.loc['2019-08-01':'2020-02-14']
+df
 
 # plot_correlation_heatmap(data)
 # plot_rolling_correlations(data, span=48*252, portfolio='TOTALDEMAND')
@@ -48,7 +49,10 @@ def stepwise_backwards_regression(y, X, p_thres=0.05):
 
 ## Choose reponse and predictor
 # cols = ['TOTALDEMAND', 'rrp', 'dow', 'TEMPERATURE']
-cols = ['TOTALDEMAND','TEMPERATURE', 'rrp', 'dow', 'doy', 'month', 'hour']
+cols = ['TOTALDEMAND', 
+        'TEMPERATURE', 'rrp',
+        'dow',
+        'minutes_past_midnight']
 start_0 = '2020-01-01'
 # tmpdf = np.log(df[cols]).dropna().loc[start_0:]
 # tmpdf = tmpdf[(tmpdf != 0) & (tmpdf != -np.inf)].dropna() ## fails standard scaler otherwise
@@ -60,7 +64,10 @@ tmpdf = tmpdf.interpolate(method='time').bfill()
 tmpdf.info()
 
 ## Add lags
-tmpdf['lag1'] = tmpdf['TOTALDEMAND'].shift(1).fillna(0)
+# tmpdf['lag1'] = tmpdf['TOTALDEMAND'].shift(1).fillna(0)
+# tmpdf['lag2'] = tmpdf['TOTALDEMAND'].shift(2).fillna(0)
+
+plot_correlation_heatmap(tmpdf)
 
 y = tmpdf['TOTALDEMAND']
 X = tmpdf.drop('TOTALDEMAND',axis=1)
@@ -92,10 +99,11 @@ model_res.summary()
 # plot_regimes(endog, model_res, prob_ind=1, exogs=exog)
 print(model_res.expected_durations) # 30 minute blocks
 
-def plot_regimes(endog, model_res, exogs, plot_exogs=False, title=None):
+def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=False, title=None):
     if not isinstance(endog, pd.DataFrame):
         endog = pd.DataFrame(endog)
-        
+    
+    cols = endog.columns 
     ## Get exog labels
     exog_labels = exogs.columns
     
@@ -111,7 +119,11 @@ def plot_regimes(endog, model_res, exogs, plot_exogs=False, title=None):
         regime_params[regime] = params
 
     ## Build plot
-    fig, axs = plt.subplots(k_regimes+2,1,figsize=(18,8))
+    if X_test is not None:
+        fig, axs = plt.subplots(k_regimes+2,1,figsize=(18,8))
+    else:
+        fig, axs = plt.subplots(k_regimes+1,1,figsize=(18,8))
+    
     fig.subplots_adjust(hspace=0.75)
     
     #### Plot the Traing Set & Fitted Values
@@ -136,14 +148,21 @@ def plot_regimes(endog, model_res, exogs, plot_exogs=False, title=None):
                 # axs[1].axhline(y=val, label=labels[ind], linestyle='dotted')
     axs[0].legend()
     
+    #### Plot of marginal probabilities
+    model_res.smoothed_marginal_probabilities[prob_ind].plot(ax=axs[1], linewidth=3)
+    if prob_ind==0:
+        axs[1].set_title('Probability of low-mean regime')
+    else:
+        axs[1].set_title('Probability of high-mean regime')
+    
     #### Plot the effect of exogenous variables on ax[1]
     for key in regime_params.keys():
         # labels = model_res.params[regime_params[key]].index[:-1]
         for ind, val in enumerate(model_res.params[regime_params[key]][:-1]):
             label_ = str(exog_labels[ind-1]) + f"_{key}"
             if ind != 0:
-                axs[1].bar(label_, val, alpha=0.5)
-    axs[1].set_title("Feature Importance for each state")
+                axs[2].bar(label_, val, alpha=0.5)
+    axs[2].set_title("Feature Importance for each state")
                 
     # axs[1].set_xticklabels(axs[1].get_xticklabels(), rotation=-45)
     if title is not None:
@@ -152,37 +171,57 @@ def plot_regimes(endog, model_res, exogs, plot_exogs=False, title=None):
         axs[0].set_title(f'{endog.columns[0]}')
 
     ##### Plot of prediction vs actual
-    predict = model_res.predict(start=0, end=len(X_test) - 1)
-    axs[2].plot(X_test.index, X_test[cols[0]].values, label='Actual', linewidth=3)
-    axs[2].plot(X_test.index, predict.values, label='Predicted', linewidth=3)
-    axs[2].set_title("Test Set vs Predicted")
-    axs[2].set_xticks(X_test.index[::len(X_test) // 7])
-    axs[2].legend()
-    
-    #### Plot of marginal probabilities
-    model_res.smoothed_marginal_probabilities[prob_ind].plot(ax=axs[3])
-    if prob_ind==0:
-        axs[3].set_title('Probability of low-mean regime')
-    else:
-        axs[3].set_title('Probability of high-mean regime')
-    
-    
-    
-    # sigma_names = [i for i in model_res.params.index if 'sigma' in i]
-    # sigma_values = [model_res.params[sigma] for sigma in sigma_names]
+    if X_test is not None:
+        predict = model_res.predict(start=0, end=len(X_test) - 1)
+        axs[3].plot(X_test.index, X_test[cols[0]].values, label='Actual', linewidth=3)
+        axs[3].plot(X_test.index, predict.values, label='Predicted', linewidth=3)
+        axs[3].set_title("Test Set vs Predicted")
+        axs[3].set_xticks(X_test.index[::len(X_test) // 7])
+        axs[3].legend()
 
-    # # Plot shaded error regions for each sigma value
-    # for sigma_name, sigma in zip(sigma_names, sigma_values):
-    #     # Calculate upper and lower bounds for the shaded regions
-    #     lower_bound = fitted_values - 2 * sigma
-    #     upper_bound = fitted_values + 2 * sigma
-        
-    #     # Plot shaded error regions
-    #     axs[0].fill_between(fitted_values.index, lower_bound, upper_bound, alpha=0.3, label=f'95% CI - {sigma_name}')
-    
-plot_regimes(endog, model_res, exog)
+plot_regimes(endog, model_res, exog, X_test)
+
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 
+predict = model_res.predict(start=0, end=len(X_test) - 1)
+
+mean_absolute_error(X_test['TOTALDEMAND'], predict)
+
+np.sqrt(mean_squared_error(X_test['TOTALDEMAND'], predict))
+
+
+#### do markovautoregression
+k_regimes = 2
+# np.random.seed(k_regimes)
+model_ar = sm.tsa.MarkovAutoregression(endog=endog, order=2, k_regimes=k_regimes, switching_ar=False, exog_tvtp=sm.add_constant(exog['TEMPERATURE']))
+model_ar = model_ar.fit(search_reps=10)
+model_ar.summary()
+# plot_regimes(endog, model_res, prob_ind=1, exogs=exog)
+print(model_ar.expected_durations) # 30 minute blocks
+
+model_ar.expected_durations.plot()
+model_ar.smoothed_marginal_probabilities.plot()
+model_ar.filtered_marginal_probabilities.plot()
+
+plot_regimes(endog, model_ar, exog, X_test)
+
+model_ar.predict()
+
+fig, axes = plt.subplots(2, figsize=(7, 7))
+ax = axes[0]
+ax.plot(model_ar.filtered_marginal_probabilities[0])
+# ax.fill_between(endog.index, 0, 1, where=endog["USREC"].values, color="k", alpha=0.1)
+ax.set_xlim(endog.index[4], endog.index[-1])
+ax.set(title="Filtered probability of recession")
+
+ax = axes[1]
+ax.plot(model_ar.smoothed_marginal_probabilities[0])
+# ax.fill_between(usrec.index, 0, 1, where=usrec["USREC"].values, color="k", alpha=0.1)
+ax.set_xlim(endog.index[4], endog.index[-1])
+ax.set(title="Smoothed probability of recession")
+
+fig.tight_layout()
 
 
 
