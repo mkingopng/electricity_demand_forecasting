@@ -9,9 +9,9 @@ Complete the information below regarding your group.
 ## Group and project information
 
 ### Group members and zIDs
-- Noel Singh (zID1) - role tbc
+- Noel Singh (z5267015) - role tbc
 - Reuben Bowell (z5382909) - role tbc
-- William Stephan (z3404800) - role tbc
+- William Stephan (z3403800) - role tbc
 - Michael Kingston (z5372750) - role tbc
 - unsw-ZZSC9020-Project-Plan-GroupO
 - https://unsw.sharepoint.com/:w:/r/sites/ZZSC9020DataScienceProject-H2-2024-GroupO/Shared%20Documents/Group%20O/unsw-ZZSC9020-Project-Plan-GroupO.docx?d=w2e293bed027b489cb0cce3d5173d94c5&csf=1&web=1&e=lJC4DN
