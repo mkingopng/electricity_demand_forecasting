@@ -24,7 +24,8 @@ df['month'] += 1
 df['doy'] += 1
 df['hour'] += 1
 
-#Backward Elimination Linear Regression
+############ Functions
+## Backward Elimination Linear Regression
 def stepwise_backwards_regression(y, X, p_thres=0.05):
     cols = list(X.columns)
     pmax = 1
@@ -47,65 +48,7 @@ def stepwise_backwards_regression(y, X, p_thres=0.05):
     print(model.summary())
     return selected_features_BE
 
-## Choose reponse and predictor
-# cols = ['TOTALDEMAND', 'rrp', 'dow', 'TEMPERATURE']
-cols = ['TOTALDEMAND', 
-        'TEMPERATURE', 'rrp',
-        'dow',
-        'minutes_past_midnight']
-start_0 = '2020-01-01'
-# tmpdf = np.log(df[cols]).dropna().loc[start_0:]
-# tmpdf = tmpdf[(tmpdf != 0) & (tmpdf != -np.inf)].dropna() ## fails standard scaler otherwise
-tmpdf = np.log(df[cols]).loc[start_0:]
-tmpdf = tmpdf[(tmpdf != 0) & (tmpdf != -np.inf)] ## fails standard scaler otherwise
-tmpdf.index.name = 'Date'
-tmpdf.index = pd.to_datetime(tmpdf.index)
-tmpdf = tmpdf.interpolate(method='time').bfill()
-tmpdf.info()
-
-## Add lags
-# tmpdf['lag1'] = tmpdf['TOTALDEMAND'].shift(1).fillna(0)
-# tmpdf['lag2'] = tmpdf['TOTALDEMAND'].shift(2).fillna(0)
-
-plot_correlation_heatmap(tmpdf)
-
-y = tmpdf['TOTALDEMAND']
-X = tmpdf.drop('TOTALDEMAND',axis=1)
-features = stepwise_backwards_regression(y, X)
-features.append('TOTALDEMAND')
-
-## Scale data for model
-tmpdf_scaled = StandardScaler().set_output(transform='pandas').fit_transform(tmpdf[features])
-tmpdf_scaled.plot()
-
-## Smooth out data with kalman filter
-tmpdf_scaled_smoothed = tmpdf_scaled.apply(lambda x: KalmanFilterAverage(x))
-tmpdf_scaled_smoothed.plot()
-
-## Train/ Test split
-days = 7
-X_test = tmpdf_scaled_smoothed.iloc[-days*48:][[cols[0]]]
-X_train = tmpdf_scaled_smoothed.iloc[:-days*48]
-print(X_train.shape[0], X_test.shape[0])
-
-## Smooth out data with kalman filter
-endog = X_train[cols[0]]
-exog = X_train.drop(cols[0],axis=1)
-
-#################### Markov Regression Model
-#########################################
-k_regimes = 2
-np.random.seed(k_regimes+1)
-model = sm.tsa.MarkovRegression(endog=endog, 
-                                k_regimes=k_regimes, 
-                                trend='c', 
-                                switching_trend=True,
-                                switching_exog=True,
-                                switching_variance=True,
-                                exog=exog)
-model_res = model.fit(search_reps=10)
-model_res.summary()
-print(model_res.expected_durations) # 30 minute blocks
+## Plotting Function
 
 def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=False, title=None):
     if not isinstance(endog, pd.DataFrame):
@@ -143,9 +86,9 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
     fig.subplots_adjust(hspace=1)
     
     #### Plot the Traing Set & Fitted Values
-    # if plot_exogs:
-    #     for exog in exogs: 
-    #         exogs[exog].plot(ax=axs[0], linewidth=2)
+    if plot_exogs:
+        for exog in exogs: 
+            exogs[exog].plot(ax=axs[0], linewidth=2)
     endog.plot(ax=axs[0], linewidth=4)
     model_res.fittedvalues.plot(ax=axs[0], label='Fitted Values', linewidth=4, linestyle='-.')
 
@@ -251,7 +194,68 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
         # plt.title('Effect of Exog on Regime Transition Probabilities')
         # plt.legend()
         # plt.grid(True)
-        
+  
+
+## Choose reponse and predictor
+# cols = ['TOTALDEMAND', 'rrp', 'dow', 'TEMPERATURE']
+cols = ['TOTALDEMAND', 
+        'TEMPERATURE', 'rrp',
+        'dow',
+        'minutes_past_midnight']
+start_0 = '2020-01-01'
+# tmpdf = np.log(df[cols]).dropna().loc[start_0:]
+# tmpdf = tmpdf[(tmpdf != 0) & (tmpdf != -np.inf)].dropna() ## fails standard scaler otherwise
+tmpdf = np.log(df[cols]).loc[start_0:]
+tmpdf = tmpdf[(tmpdf != 0) & (tmpdf != -np.inf)] ## fails standard scaler otherwise
+tmpdf.index.name = 'Date'
+tmpdf.index = pd.to_datetime(tmpdf.index)
+tmpdf = tmpdf.interpolate(method='time').bfill()
+tmpdf.info()
+
+## Add lags
+# tmpdf['lag1'] = tmpdf['TOTALDEMAND'].shift(1).fillna(0)
+# tmpdf['lag2'] = tmpdf['TOTALDEMAND'].shift(2).fillna(0)
+
+plot_correlation_heatmap(tmpdf)
+
+y = tmpdf['TOTALDEMAND']
+X = tmpdf.drop('TOTALDEMAND',axis=1)
+features = stepwise_backwards_regression(y, X)
+features.append('TOTALDEMAND')
+
+## Scale data for model
+tmpdf_scaled = StandardScaler().set_output(transform='pandas').fit_transform(tmpdf[features])
+tmpdf_scaled.plot()
+
+## Smooth out data with kalman filter
+tmpdf_scaled_smoothed = tmpdf_scaled.apply(lambda x: KalmanFilterAverage(x))
+tmpdf_scaled_smoothed.plot()
+
+## Train/ Test split
+days = 7
+X_test = tmpdf_scaled_smoothed.iloc[-days*48:][[cols[0]]]
+X_train = tmpdf_scaled_smoothed.iloc[:-days*48]
+print(X_train.shape[0], X_test.shape[0])
+
+## Smooth out data with kalman filter
+endog = X_train[cols[0]]
+exog = X_train.drop(cols[0],axis=1)
+
+#################### Markov Regression Model
+#########################################
+k_regimes = 2
+np.random.seed(k_regimes+1)
+model = sm.tsa.MarkovRegression(endog=endog, 
+                                k_regimes=k_regimes, 
+                                trend='c', 
+                                switching_trend=True,
+                                switching_exog=True,
+                                switching_variance=True,
+                                exog=exog)
+model_res = model.fit(search_reps=10)
+model_res.summary()
+print(model_res.expected_durations) # 30 minute blocks
+      
 plot_regimes(endog, model_res, exog, X_test)
 
 ## Metrics
