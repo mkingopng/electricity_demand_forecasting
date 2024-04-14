@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 import wandb
 from prophet.serialize import model_to_json, model_from_json
+import os
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 load_dotenv()
@@ -24,8 +25,10 @@ load_dotenv()
 class CFG:
 	wandb_project = 'electricity_demand_forecasting'
 	wandb_run_name = 'prophet'
-	data_path = '../data/NSW'
-	train = True
+	data_path = './../data/NSW'
+	image_path = './../images'
+	models_path = './../trained_models'
+	train = True  # if True then train, if False then inference
 
 
 wandb.init(
@@ -34,7 +37,7 @@ wandb.init(
 )
 
 # load and prep data
-df = pd.read_parquet('../data/NSW/nsw_df.parquet')
+df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
 df.reset_index(inplace=True)
 
 # prophet has some eccentricities for naming features
@@ -43,14 +46,14 @@ df.rename(
 	inplace=True
 )
 
-# ensure 'ds' is datetime type
+# ensure 'ds' is datetime type. Prophet requirement
 df['ds'] = pd.to_datetime(df['ds'])
 
 print(df['TEMPERATURE'].isna().sum())
 
-# calculate the cut-off date for the last 7 days
-cutoff_date = df['ds'].max() - pd.Timedelta(days=7)
-cutoff_date2 = df['ds'].max() - pd.Timedelta(days=14)
+# calculate the cut-off dates for split
+cutoff_date = df['ds'].max() - pd.Timedelta(days=7)  # last 7 days for val
+cutoff_date2 = df['ds'].max() - pd.Timedelta(days=14)  # second last 7 days for test
 
 # create training df by slicing data at the cut-off date
 df_train = df[df['ds'] <= cutoff_date2]
@@ -60,7 +63,7 @@ df_test = df[(df['ds'] > cutoff_date2) & (df['ds'] <= cutoff_date)]
 
 df_val = df[df['ds'] > cutoff_date]
 
-# print(df.head())
+# print(df.head())  # debugging line
 
 # initial plot of the data
 plt.figure(figsize=(15, 10))
@@ -70,11 +73,13 @@ plt.ylabel('Total Demand')
 plt.title('Total Demand Over Time')
 plt.legend()
 plt.show()
-plt.savefig('./../images/total_demand_over_time.png')
+plt.savefig(os.path.join(CFG.image_path, 'total_demand_over_time.png'))
 
 if CFG.train:
 	# initialise the model
 	model = Prophet(weekly_seasonality=False)
+
+	# add regressors
 	model.add_regressor('TEMPERATURE')
 	model.add_regressor('FORECASTDEMAND')
 	model.add_regressor('rrp')
@@ -129,18 +134,18 @@ if CFG.train:
 		horizon='168 hours'  # 7 days
 	)
 
-	fig = plot_cross_validation_metric(
-		df_cv,
-		metric='mae'
-	)
+	fig = plot_cross_validation_metric(df_cv, metric='mae')
 	plt.show()
-	plt.savefig('./../images/prophet_cv_mae.png')
+	plt.savefig(os.path.join(CFG.image_path, 'prophet_cv_mae.png'))
 
 	with open('./../trained_models/trained_prophet_model.json', 'w') as fout:
 		fout.write(model_to_json(model))  # Save model
+
+###############################################################################
+# inference
 else:
-	with open('./../trained_models/trained_prophet_model.json', 'r') as fin:
-		model = model_from_json(fin.read())  # Load model
+	with open(os.path.join(CFG.models_path, 'trained_prophet_model.json', 'r')) as fin:
+		model = model_from_json(fin.read())  # load model
 		# make future dataframe
 		future = df_val[[
 			'ds',
@@ -159,7 +164,7 @@ else:
 			'season'
 		]].copy()
 
-	# forecast
+	# forecast the future using the model
 	forecast = model.predict(future)
 	print(forecast.head())
 
@@ -167,7 +172,7 @@ else:
 	fig1 = model.plot(forecast)
 	add_changepoints_to_plot(fig1.gca(), model, forecast)
 	plt.show()
-	plt.savefig('./../images/prophet_changepoints.png')
+	plt.savefig(os.path.join(CFG.image_path, 'prophet_changepoints.png'))
 
 	# plot forecast and actual values for test period
 	plt.figure(figsize=(10, 6))
@@ -180,12 +185,12 @@ else:
 	plt.title('Forecast vs Actual for the Test Period')
 	plt.legend()
 	plt.show()
-	plt.savefig('./../images/prophet_forecast_vs_actual.png')
+	plt.savefig(os.path.join(CFG.image_path, 'prophet_forecast_vs_actual.png'))
 
 	# plot components of the forecast
 	fig2 = model.plot_components(forecast)
 	plt.show()
-	plt.savefig('./../images/prophet_components.png')
+	plt.savefig(os.path.join(CFG.image_path, 'prophet_components.png'))
 
 	# check forecast df only includes dates present in the test set
 	forecast_filtered = forecast[forecast['ds'].isin(df_val['ds'])]
