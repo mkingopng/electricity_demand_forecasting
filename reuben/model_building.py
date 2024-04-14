@@ -92,9 +92,10 @@ print(X_train.shape[0], X_test.shape[0])
 endog = X_train[cols[0]]
 exog = X_train.drop(cols[0],axis=1)
 
-## Build and Fit Markov Regression Model
+#################### Markov Regression Model
+#########################################
 k_regimes = 2
-np.random.seed(k_regimes)
+np.random.seed(k_regimes+1)
 model = sm.tsa.MarkovRegression(endog=endog, 
                                 k_regimes=k_regimes, 
                                 trend='c', 
@@ -102,10 +103,8 @@ model = sm.tsa.MarkovRegression(endog=endog,
                                 switching_exog=True,
                                 switching_variance=True,
                                 exog=exog)
-# model = sm.tsa.MarkovRegression(endog=endog, k_regimes=k_regimes, trend='c', switching_variance=True, exog=None)
 model_res = model.fit(search_reps=10)
 model_res.summary()
-# plot_regimes(endog, model_res, prob_ind=1, exogs=exog)
 print(model_res.expected_durations) # 30 minute blocks
 
 def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=False, title=None):
@@ -117,7 +116,7 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
     cols = endog.columns
     ## Get exog labels
     exog_labels = exogs.columns
-    
+        
     ## Get params of differing states and find highest const state
     const = model_res.params['const[0]']
     prob_ind = 0
@@ -128,19 +127,25 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
             const = model_res.params[params[0]]
             prob_ind += 1
         regime_params[regime] = params
-
+        
     ## Build plot
     if X_test is not None:
-        fig, axs = plt.subplots(k_regimes+2,1,figsize=(18,8))
+        if 'p[0->0].tvtp0' in model_res.params:
+            fig, axs = plt.subplots(k_regimes+3,1,figsize=(18,8))
+        else:
+            fig, axs = plt.subplots(k_regimes+2,1,figsize=(18,8))
     else:
-        fig, axs = plt.subplots(k_regimes+1,1,figsize=(18,8))
+        if 'p[0->0].tvtp0' in model_res.params:
+            fig, axs = plt.subplots(k_regimes+2,1,figsize=(18,8))
+        else:
+            fig, axs = plt.subplots(k_regimes+1,1,figsize=(18,8))
     
-    fig.subplots_adjust(hspace=0.75)
+    fig.subplots_adjust(hspace=1)
     
     #### Plot the Traing Set & Fitted Values
-    if plot_exogs:
-        for exog in exogs: 
-            exogs[exog].plot(ax=axs[0], linewidth=2)
+    # if plot_exogs:
+    #     for exog in exogs: 
+    #         exogs[exog].plot(ax=axs[0], linewidth=2)
     endog.plot(ax=axs[0], linewidth=4)
     model_res.fittedvalues.plot(ax=axs[0], label='Fitted Values', linewidth=4, linestyle='-.')
 
@@ -154,26 +159,39 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
                 mu_label = rf'$\mu_{mu_val}$'
                 axs[0].axhline(y=val, label=mu_label, linestyle='dotted', c=cs[mu_val])
                 mu_val += 1
-            else:
-                continue
-                # axs[1].axhline(y=val, label=labels[ind], linestyle='dotted')
     axs[0].legend()
-    
+        
     #### Plot of marginal probabilities
     model_res.smoothed_marginal_probabilities[prob_ind].plot(ax=axs[1], linewidth=3)
     if prob_ind==0:
-        axs[1].set_title('Probability of low-mean regime')
+        axs[1].set_title('Smoothed Marginal Probability of low-mean regime')
     else:
-        axs[1].set_title('Probability of high-mean regime')
-    
-    #### Plot the effect of exogenous variables on ax[1]
-    for key in regime_params.keys():
-        # labels = model_res.params[regime_params[key]].index[:-1]
-        for ind, val in enumerate(model_res.params[regime_params[key]][:-1]):
-            label_ = str(exog_labels[ind-1]) + f"_{key}"
-            if ind != 0:
-                axs[2].bar(label_, val, alpha=0.5)
-    axs[2].set_title("Feature Importance for each state")
+        axs[1].set_title('Smoothed Marginal Probability of high-mean regime')
+        
+    #### Plot Feature Importance
+    if 'ar.L1' in model_res.params:
+        ## For Markov AutoRegression
+        ar_vals = []
+        ar_params = [i for i in model_res.params.index if 'ar' in i]
+        for ar_param in ar_params:
+            ar_vals.append(model_res.params[ar_param])
+            
+        ## Plot of Autoregressive coefficients 
+        axs[2].bar(range(len(ar_vals)), ar_vals)
+        axs[2].set_xlabel("Lag")
+        # axs[2].set_ylabel("AR Coefficient")
+        axs[2].set_title("Autoregressive Coefficients")
+        axs[2].set_xticks(range(len(ar_vals)))  # Set x-axis ticks for each lag
+        axs[2].grid(axis='y')
+    else:
+        #### Plot the effect of exogenous variables on ax[1]
+        for key in regime_params.keys():
+            # labels = model_res.params[regime_params[key]].index[:-1]
+            for ind, val in enumerate(model_res.params[regime_params[key]][:-1]):
+                label_ = str(exog_labels[ind-1]) + f"_{key}"
+                if ind != 0:
+                    axs[2].bar(label_, val, alpha=0.5)
+        axs[2].set_title("Feature Importance for each state")
                 
     # axs[1].set_xticklabels(axs[1].get_xticklabels(), rotation=-45)
     if title is not None:
@@ -189,19 +207,64 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
         axs[3].set_title("Test Set vs Predicted")
         axs[3].set_xticks(X_test.index[::len(X_test) // 7])
         axs[3].legend()
+    
+    if 'p[0->0].tvtp0' in model_res.params:
+        ## For Markov AutoRegression
+        tvtp_vals = []
+        tvtp_params = [i for i in model_res.params.index if 'tvtp' in i]
+        for tvtp_param in tvtp_params:
+            tvtp_vals.append(model_res.params[tvtp_param])
+        
+        xrange = np.linspace(np.min(tvtp_vals), np.max(tvtp_vals), 100)
+        
+        # Extract probabilities method 1
+        p00_0 = model_res.params['p[0->0].tvtp0']
+        p00_1 = model_res.params['p[0->0].tvtp1']
+        p10_0 = model_res.params['p[1->0].tvtp0']
+        p10_1 = model_res.params['p[1->0].tvtp1']
+        p_stay_0 = np.exp(p00_0 + p00_1 * xrange) / (1 + np.exp(p00_0 + p00_1 * xrange))
+        p_stay_1 = np.exp(p10_0 + p10_1 * xrange) / (1 + np.exp(p10_0 + p10_1 * xrange))
 
+        # # Extract probabilities method 2
+        # p_stay_vals = {}
+        # for i in range(1, int(len(tvtp_vals)/2+2), 2):
+        #     # i = 3
+        #     val = np.exp(tvtp_vals[i-1] + tvtp_vals[i] * xrange) / (1 + np.exp(tvtp_vals[i-1] + tvtp_vals[i] * xrange))
+        #     p_stay_vals[i-1] = val
+            
+        # # Plot transition probabilities vs temperature
+        # for key in p_stay_vals.keys():
+        #     plt.plot(xrange, p_stay_vals[key], label=f'Regime {key} -> Regime {key}')
+        
+        axs[4].plot(xrange, p_stay_0, label='Regime 0 -> Regime 0')
+        axs[4].plot(xrange, p_stay_1, label='Regime 1 -> Regime 1')
+        # axs[4].xlabel('Temperature')
+        # axs[4].ylabel('Transition Probability')
+        axs[4].set_title('Effect of Exog on Regime Transition Probabilities')
+        axs[4].legend()
+        axs[4].grid(True)
+        
+        # plt.plot(xrange, p_stay_0, label='Regime 0 -> Regime 0')
+        # plt.plot(xrange, p_stay_1, label='Regime 1 -> Regime 1')
+        # # plt.xlabel('Temperature')
+        # # plt.ylabel('Transition Probability')
+        # plt.title('Effect of Exog on Regime Transition Probabilities')
+        # plt.legend()
+        # plt.grid(True)
+        
 plot_regimes(endog, model_res, exog, X_test)
 
 ## Metrics
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-predict = model_res.predict(start=0, end=len(X_test) - 1)
-mean_absolute_error(X_test['TOTALDEMAND'], predict)
-np.sqrt(mean_squared_error(X_test['TOTALDEMAND'], predict))
+predict_res = model_res.predict(start=0, end=len(X_test) - 1)
+print('MAE:', mean_absolute_error(X_test['TOTALDEMAND'], predict_res).round(2))
+print('RMSE:', np.sqrt(mean_squared_error(X_test['TOTALDEMAND'], predict_res)).round(2))
 
 
-#### Markovautoregression
+#################### Markov Auto-Regression Model
+#########################################
 k_regimes = 2
-np.random.seed(k_regimes)
+np.random.seed(k_regimes+1)
 model_ar = sm.tsa.MarkovAutoregression(endog=endog, 
                                        order=3, 
                                        k_regimes=k_regimes, 
@@ -213,103 +276,34 @@ model_ar = sm.tsa.MarkovAutoregression(endog=endog,
                                        )
 model_ar = model_ar.fit(search_reps=10)
 model_ar.summary()
-# plot_regimes(endog, model_res, prob_ind=1, exogs=exog)
 print(model_ar.expected_durations) # 30 minute blocks
-
-model_ar.expected_durations.plot()
-model_ar.smoothed_marginal_probabilities.plot()
-model_ar.filtered_marginal_probabilities.plot()
 
 plot_regimes(endog, model_ar, exog, X_test)
 
-endog.plot()
-model_ar.fittedvalues.plot()
+## Metrics
+predict_ar = model_ar.predict(start=0, end=len(X_test) - 1)
+print('MAE:', mean_absolute_error(X_test['TOTALDEMAND'], predict_ar).round(2))
+print('RMSE:', np.sqrt(mean_squared_error(X_test['TOTALDEMAND'], predict_ar)).round(2))
 
-model_ar.resid
-plt.scatter(y=model_ar.resid, x=endog)
 
 
-model_ar.predict()
 
-fig, axes = plt.subplots(2, figsize=(7, 7))
-ax = axes[0]
-ax.plot(model_ar.filtered_marginal_probabilities[0])
-# ax.fill_between(endog.index, 0, 1, where=endog["USREC"].values, color="k", alpha=0.1)
-ax.set_xlim(endog.index[4], endog.index[-1])
-ax.set(title="Filtered probability of recession")
 
-ax = axes[1]
-ax.plot(model_ar.smoothed_marginal_probabilities[0])
-# ax.fill_between(usrec.index, 0, 1, where=usrec["USREC"].values, color="k", alpha=0.1)
-ax.set_xlim(endog.index[4], endog.index[-1])
-ax.set(title="Smoothed probability of recession")
 
-fig.tight_layout()
 
-### BTC Hash
 
-def getBitcoinHashData(path="dataHMM/hash-rate.json", plot=True):
-    from datetime import datetime
-    hash = pd.read_json(path)
-    hash = hash[['hash-rate', 'market-price']]
 
-    data = pd.DataFrame(columns=['hash', 'price'])
-    for col in hash.columns:
-        for loc in hash.index:
-            d = hash.loc[loc, col]
-            keys = list(d.keys())
-            if col == 'hash-rate':
-                data.loc[d[keys[0]], 'hash'] = d[keys[1]]
-            else:
-                data.loc[d[keys[0]], 'price'] = d[keys[1]]
 
-    data = data.astype(float)
-    # data['returns'] = np.log(data['price']).diff()
-    print(data.info())
-    
-    data.index = pd.to_datetime(data.index, unit='ms')
-    
-    if plot:
-        # Create the dual axis plot
-        fig, ax1 = plt.subplots()
-        # Plot 'hash' data on the primary y-axis (left)
-        ax1.plot(data['hash'], 'b-o', label='Hash Rate')
-        ax1.set_xlabel('Time')
-        ax1.set_ylabel('Hash Rate', color='b')
 
-        # Create a twin axis for 'price' data on the secondary y-axis (right)
-        ax2 = ax1.twinx()
-        ax2.plot(data['price'], 'r-s', label='Price')
-        ax2.set_ylabel('Price', color='r')
 
-        # Add labels and title
-        plt.title('Dual Axis Plot (Hash Rate vs. Price)')
-        lines1, labels1 = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
 
-        plt.show()
-    return data
 
-path = r"/Users/reubenbowell/MEGA/VSCode/team-O/reuben/dataRB/hash-rate.json"
-data = getBitcoinHashData(path)
-data
 
-tmpdf = data[(data != 0) & (data != -np.inf)].dropna()
-labels_ = tmpdf.columns
-tmpdf = StandardScaler().set_output(transform='pandas').fit_transform(tmpdf)
 
-X_train, X_test = apm.subset_data(tmpdf, train_split_func=True, test_size=0.1)
-print(X_train.shape[0], X_test.shape[0])
 
-endog = X_train['price']
-exog = X_train[['hash']]
 
-k_regimes = 2
-np.random.seed(k_regimes)
-model = sm.tsa.MarkovRegression(endog, k_regimes=k_regimes, trend='c', switching_variance=True, exog=exog)
-model_res = model.fit(search_reps=5)
-model_res.summary()
+
+
 
 
 
