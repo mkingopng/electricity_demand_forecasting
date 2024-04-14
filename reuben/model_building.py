@@ -11,15 +11,8 @@ warnings.filterwarnings('ignore')
 
 data = pd.read_parquet("../data/NSW/nsw_df.parquet")
 df = data.loc['2019-08-01':'2020-02-14']
-df
 
-# plot_correlation_heatmap(data)
-# plot_rolling_correlations(data, span=48*252, portfolio='TOTALDEMAND')
-
-#### Markov Model
-from sklearn.preprocessing import StandardScaler
-df.columns
-df
+#### Pre-process some columns
 df['month'] += 1
 df['doy'] += 1
 df['hour'] += 1
@@ -49,7 +42,6 @@ def stepwise_backwards_regression(y, X, p_thres=0.05):
     return selected_features_BE
 
 ## Plotting Function
-
 def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=False, title=None):
     if not isinstance(endog, pd.DataFrame):
         endog = pd.DataFrame(endog)
@@ -195,16 +187,23 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
         # plt.legend()
         # plt.grid(True)
   
-
 ## Choose reponse and predictor
-# cols = ['TOTALDEMAND', 'rrp', 'dow', 'TEMPERATURE']
+df.columns
 cols = ['TOTALDEMAND', 
-        'TEMPERATURE', 'rrp',
+        'FORECASTDEMAND',
+        'TEMPERATURE', 
+        'daily_avg_actual', 
+        'daily_avg_forecast', 
+        'forecast_error',
+        'rrp',
         'dow',
-        'minutes_past_midnight']
+        'minutes_past_midnight',
+]
+
+## Start date
 start_0 = '2020-01-01'
-# tmpdf = np.log(df[cols]).dropna().loc[start_0:]
-# tmpdf = tmpdf[(tmpdf != 0) & (tmpdf != -np.inf)].dropna() ## fails standard scaler otherwise
+
+## Load columns and other misc
 tmpdf = np.log(df[cols]).loc[start_0:]
 tmpdf = tmpdf[(tmpdf != 0) & (tmpdf != -np.inf)] ## fails standard scaler otherwise
 tmpdf.index.name = 'Date'
@@ -212,18 +211,17 @@ tmpdf.index = pd.to_datetime(tmpdf.index)
 tmpdf = tmpdf.interpolate(method='time').bfill()
 tmpdf.info()
 
-## Add lags
-# tmpdf['lag1'] = tmpdf['TOTALDEMAND'].shift(1).fillna(0)
-# tmpdf['lag2'] = tmpdf['TOTALDEMAND'].shift(2).fillna(0)
-
+## Plot Correlation of features
 plot_correlation_heatmap(tmpdf)
 
+## Run backward stepwise regression
 y = tmpdf['TOTALDEMAND']
 X = tmpdf.drop('TOTALDEMAND',axis=1)
 features = stepwise_backwards_regression(y, X)
 features.append('TOTALDEMAND')
 
 ## Scale data for model
+from sklearn.preprocessing import StandardScaler
 tmpdf_scaled = StandardScaler().set_output(transform='pandas').fit_transform(tmpdf[features])
 tmpdf_scaled.plot()
 
@@ -237,25 +235,29 @@ X_test = tmpdf_scaled_smoothed.iloc[-days*48:][[cols[0]]]
 X_train = tmpdf_scaled_smoothed.iloc[:-days*48]
 print(X_train.shape[0], X_test.shape[0])
 
-## Smooth out data with kalman filter
+## Split into Endog and Exog
 endog = X_train[cols[0]]
 exog = X_train.drop(cols[0],axis=1)
 
 #################### Markov Regression Model
 #########################################
 k_regimes = 2
-np.random.seed(k_regimes+1)
+np.random.seed(k_regimes)
 model = sm.tsa.MarkovRegression(endog=endog, 
                                 k_regimes=k_regimes, 
                                 trend='c', 
                                 switching_trend=True,
                                 switching_exog=True,
                                 switching_variance=True,
-                                exog=exog)
+                                exog=exog,
+)
 model_res = model.fit(search_reps=10)
 model_res.summary()
-print(model_res.expected_durations) # 30 minute blocks
-      
+
+## Expected Durations in 30 minute blocks
+print(model_res.expected_durations)
+
+## Plot
 plot_regimes(endog, model_res, exog, X_test)
 
 ## Metrics
@@ -267,8 +269,9 @@ print('RMSE:', np.sqrt(mean_squared_error(X_test['TOTALDEMAND'], predict_res)).r
 
 #################### Markov Auto-Regression Model
 #########################################
+exog_tvtp = sm.add_constant(exog[['TEMPERATURE']]) # Exogenous variables to use in calculating time-varying transition probabilities (TVTP).
 k_regimes = 2
-np.random.seed(k_regimes+1)
+np.random.seed(k_regimes)
 model_ar = sm.tsa.MarkovAutoregression(endog=endog, 
                                        order=3, 
                                        k_regimes=k_regimes, 
@@ -276,12 +279,15 @@ model_ar = sm.tsa.MarkovAutoregression(endog=endog,
                                        switching_trend=True,
                                        switching_exog=True,
                                        switching_variance=True,
-                                       exog_tvtp=sm.add_constant(exog['TEMPERATURE'])
-                                       )
+                                       exog_tvtp=exog_tvtp,
+)
 model_ar = model_ar.fit(search_reps=10)
 model_ar.summary()
-print(model_ar.expected_durations) # 30 minute blocks
 
+## Expected Durations in 30 minute blocks
+# print(model_ar.expected_durations)
+
+## Plot
 plot_regimes(endog, model_ar, exog, X_test)
 
 ## Metrics
