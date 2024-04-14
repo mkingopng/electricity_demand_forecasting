@@ -25,7 +25,7 @@ class CFG:
 	wandb_project = 'electricity_demand_forecasting'
 	wandb_run_name = 'prophet'
 	data_path = '../data/NSW'
-	train = False
+	train = True
 
 
 wandb.init(
