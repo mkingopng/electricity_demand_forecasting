@@ -271,6 +271,10 @@ print('RMSE:', np.sqrt(mean_squared_error(X_test['TOTALDEMAND'], predict_res)).r
 
 #################### Markov Auto-Regression Model
 #########################################
+## Autocorrelation plot
+from statsmodels.graphics.tsaplots import plot_acf
+plot_acf(endog)
+
 exog_tvtp = sm.add_constant(exog[['TEMPERATURE']]) # Exogenous variables to use in calculating time-varying transition probabilities (TVTP).
 k_regimes = 2
 np.random.seed(k_regimes)
