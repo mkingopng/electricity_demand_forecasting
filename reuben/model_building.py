@@ -42,7 +42,7 @@ def stepwise_backwards_regression(y, X, p_thres=0.05):
     return selected_features_BE
 
 ## Plotting Function
-def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=False, title=None):
+def plot_regimes(endog, model_res, exog, X_test=None, k_regimes=2, plot_exogs=False, title=None):
     if not isinstance(endog, pd.DataFrame):
         endog = pd.DataFrame(endog)
     
@@ -50,7 +50,7 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
     
     cols = endog.columns
     ## Get exog labels
-    exog_labels = exogs.columns
+    exog_labels = exog.columns
         
     ## Get params of differing states and find highest const state
     const = model_res.params['const[0]']
@@ -66,21 +66,21 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
     ## Build plot
     if X_test is not None:
         if 'p[0->0].tvtp0' in model_res.params:
-            fig, axs = plt.subplots(k_regimes+3,1,figsize=(18,8))
+            fig, axs = plt.subplots(k_regimes+3,1,figsize=(20,10))
         else:
-            fig, axs = plt.subplots(k_regimes+2,1,figsize=(18,8))
+            fig, axs = plt.subplots(k_regimes+2,1,figsize=(20,10))
     else:
         if 'p[0->0].tvtp0' in model_res.params:
-            fig, axs = plt.subplots(k_regimes+2,1,figsize=(18,8))
+            fig, axs = plt.subplots(k_regimes+2,1,figsize=(20,10))
         else:
-            fig, axs = plt.subplots(k_regimes+1,1,figsize=(18,8))
+            fig, axs = plt.subplots(k_regimes+1,1,figsize=(20,10))
     
-    fig.subplots_adjust(hspace=1)
+    fig.subplots_adjust(hspace=0.75)
     
     #### Plot the Traing Set & Fitted Values
-    if plot_exogs:
-        for exog in exogs: 
-            exogs[exog].plot(ax=axs[0], linewidth=2)
+    # if plot_exogs:
+    #     for exog_ in exog: 
+    #         exog[exog_].plot(ax=axs[0], linewidth=2)
     endog.plot(ax=axs[0], linewidth=4)
     model_res.fittedvalues.plot(ax=axs[0], label='Fitted Values', linewidth=4, linestyle='-.')
 
@@ -95,6 +95,7 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
                 axs[0].axhline(y=val, label=mu_label, linestyle='dotted', c=cs[mu_val])
                 mu_val += 1
     axs[0].legend()
+    axs[0].set_ylabel("")
         
     #### Plot of marginal probabilities
     model_res.smoothed_marginal_probabilities[prob_ind].plot(ax=axs[1], linewidth=3)
@@ -114,6 +115,7 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
         ## Plot of Autoregressive coefficients 
         axs[2].bar(range(len(ar_vals)), ar_vals)
         axs[2].set_xlabel("Lag")
+        axs[2].set_ylabel("")
         # axs[2].set_ylabel("AR Coefficient")
         axs[2].set_title("Autoregressive Coefficients")
         axs[2].set_xticks(range(len(ar_vals)))  # Set x-axis ticks for each lag
@@ -127,6 +129,7 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
                 if ind != 0:
                     axs[2].bar(label_, val, alpha=0.5)
         axs[2].set_title("Feature Importance for each state")
+        axs[2].set_xticklabels(axs[2].get_xticklabels(), rotation=-20)
                 
     # axs[1].set_xticklabels(axs[1].get_xticklabels(), rotation=-45)
     if title is not None:
@@ -186,14 +189,13 @@ def plot_regimes(endog, model_res, exogs, X_test=None, k_regimes=2, plot_exogs=F
         # plt.title('Effect of Exog on Regime Transition Probabilities')
         # plt.legend()
         # plt.grid(True)
+    ## Set layout
+    fig.tight_layout()
   
 ## Choose reponse and predictor
 df.columns
 cols = ['TOTALDEMAND', 
-        'FORECASTDEMAND',
-        'TEMPERATURE', 
-        'daily_avg_actual', 
-        'daily_avg_forecast', 
+        'TEMPERATURE',
         'forecast_error',
         'rrp',
         'dow',
@@ -211,23 +213,23 @@ tmpdf.index = pd.to_datetime(tmpdf.index)
 tmpdf = tmpdf.interpolate(method='time').bfill()
 tmpdf.info()
 
-## Plot Correlation of features
-plot_correlation_heatmap(tmpdf)
-
 ## Run backward stepwise regression
 y = tmpdf['TOTALDEMAND']
 X = tmpdf.drop('TOTALDEMAND',axis=1)
 features = stepwise_backwards_regression(y, X)
 features.append('TOTALDEMAND')
 
+## Plot Correlation of features
+plot_correlation_heatmap(tmpdf[features])
+
 ## Scale data for model
 from sklearn.preprocessing import StandardScaler
 tmpdf_scaled = StandardScaler().set_output(transform='pandas').fit_transform(tmpdf[features])
-tmpdf_scaled.plot()
+tmpdf_scaled.plot(); plt.show()
 
 ## Smooth out data with kalman filter
 tmpdf_scaled_smoothed = tmpdf_scaled.apply(lambda x: KalmanFilterAverage(x))
-tmpdf_scaled_smoothed.plot()
+tmpdf_scaled_smoothed.plot(); plt.show()
 
 ## Train/ Test split
 days = 7
@@ -269,11 +271,15 @@ print('RMSE:', np.sqrt(mean_squared_error(X_test['TOTALDEMAND'], predict_res)).r
 
 #################### Markov Auto-Regression Model
 #########################################
+## Autocorrelation plot
+from statsmodels.graphics.tsaplots import plot_acf
+plot_acf(endog)
+
 exog_tvtp = sm.add_constant(exog[['TEMPERATURE']]) # Exogenous variables to use in calculating time-varying transition probabilities (TVTP).
 k_regimes = 2
 np.random.seed(k_regimes)
 model_ar = sm.tsa.MarkovAutoregression(endog=endog, 
-                                       order=3, 
+                                       order=3, ## 3rd order autoregressive lags
                                        k_regimes=k_regimes, 
                                        switching_ar=False, 
                                        switching_trend=True,
