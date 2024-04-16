@@ -25,6 +25,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import wandb
 from dotenv import load_dotenv
+import joblib
 
 load_dotenv()
 wandb_api_key = os.getenv('WANDB_API_KEY')
@@ -41,7 +42,7 @@ class LstmCFG:
     logging = True
     train = True
     version = 32  # increment for each training run
-    n_folds = 10
+    n_folds = 6
     epochs = 30  # dont touch me
     n_features = 33
     input_size = 33
@@ -50,8 +51,8 @@ class LstmCFG:
     output_size = 1
     batch_size = 1024
     seq_length = 336  # 336 one week of 30-minute sample intervals
-    dropout = 0.2  # change me
-    weight_decay = 0.00001  # change me
+    dropout = 0.2
+    weight_decay = 0.00001
     lr = 0.0002
     lrs_step_size = 6
     lrs_gamma = 0.4
@@ -278,275 +279,344 @@ input_features = [
     ]
 
 if __name__ == "__main__":
-    set_seed(seed_value=42)
+    if LstmCFG.train:
+        set_seed(seed_value=42)
 
-    CFG = LstmCFG()
+        CFG = LstmCFG()
 
-    wandb_config = {
-        "n_folds": LstmCFG.n_folds,
-        "n_features": LstmCFG.n_features,
-        "hidden layers": LstmCFG.hidden_units,
-        "learning_rate": LstmCFG.lr,
-        "batch_size": LstmCFG.batch_size,
-        "epochs": LstmCFG.epochs,
-        "sequence_length": LstmCFG.seq_length,
-        "dropout": LstmCFG.dropout,
-        "num_layers": LstmCFG.num_layers,
-        "weight_decay": LstmCFG.weight_decay,
-        "lrs_step_size": LstmCFG.lrs_step_size,
-        "lrs_gamma": LstmCFG.lrs_gamma,
-    }
+        wandb_config = {
+            "n_folds": LstmCFG.n_folds,
+            "n_features": LstmCFG.n_features,
+            "hidden layers": LstmCFG.hidden_units,
+            "learning_rate": LstmCFG.lr,
+            "batch_size": LstmCFG.batch_size,
+            "epochs": LstmCFG.epochs,
+            "sequence_length": LstmCFG.seq_length,
+            "dropout": LstmCFG.dropout,
+            "num_layers": LstmCFG.num_layers,
+            "weight_decay": LstmCFG.weight_decay,
+            "lrs_step_size": LstmCFG.lrs_step_size,
+            "lrs_gamma": LstmCFG.lrs_gamma,
+        }
 
-    if CFG.logging:
-        wandb.init(
-            project=CFG.wandb_project_name,
-            name=f'{CFG.wandb_run_name}_v{CFG.version}',
-            config=wandb_config,
-            job_type='train_model'
+        if CFG.logging:
+            wandb.init(
+                project=CFG.wandb_project_name,
+                name=f'{CFG.wandb_run_name}_v{CFG.version}',
+                config=wandb_config,
+                job_type='train_model'
+            )
+
+        nsw_df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
+        nsw_df.drop(
+            columns=['daily_avg_actual', 'daily_avg_forecast'],
+            inplace=True
+        )
+        # print(f'nsw_df columns: {nsw_df.shape[1]}') # number of columns in df
+
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        # define a cutoff date from the last date in df
+        cutoff_date1 = nsw_df.index.max() - pd.Timedelta(days=7)
+        cutoff_date2 = nsw_df.index.max() - pd.Timedelta(days=14)
+
+        # split the data using cutoff date
+        train_df = nsw_df[nsw_df.index <= cutoff_date2].copy()
+        # print(f'train_df columns: {train_df.shape[1]}')  # dubugging line
+
+        test_df = nsw_df[(nsw_df.index > cutoff_date2) & (nsw_df.index <= cutoff_date1)].copy()
+        # print(f'nsw_df columns: {test_df.shape[1]}')  # dubugging line
+
+        val_df = nsw_df[nsw_df.index > cutoff_date1].copy()
+        # print(f'val_df columns: {val_df.shape[1]}')  # dubugging line
+
+        # normalize the training data, save scaler
+        train_df, scalers = normalize_columns(
+            train_df,
+            column_mapping
         )
 
-    nsw_df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
-    nsw_df.drop(
-        columns=['daily_avg_actual', 'daily_avg_forecast'],
-        inplace=True
-    )
-    # print(f'nsw_df columns: {nsw_df.shape[1]}') # number of columns in df
+        # encode cyclical features for train and test df
+        for col, max_val in max_values.items():
+            train_df = encode_cyclical_features(train_df, col, max_val)
+            # print(f'encoded train_df columns: {test_df.shape[1]}')
+            test_df = encode_cyclical_features(test_df, col, max_val)
+            # print(f'encoded test_df columns: {test_df.shape[1]}')
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # apply the saved scalers to the test data without fitting
+        for original_col, normalized_col in column_mapping.items():
+            test_df.loc[:, normalized_col] = scalers[original_col].transform(test_df[[original_col]])
 
-    # define a cutoff date from the last date in df
-    cutoff_date1 = nsw_df.index.max() - pd.Timedelta(days=7)
-    cutoff_date2 = nsw_df.index.max() - pd.Timedelta(days=14)
+        label_col = 'normalised_total_demand'
 
-    # split the data using cutoff date
-    train_df = nsw_df[nsw_df.index <= cutoff_date2].copy()
-    # print(f'train_df columns: {train_df.shape[1]}')  # dubugging line
+        input_size = len(input_features)
+        # print(f'input size: {input_size}')
 
-    test_df = nsw_df[(nsw_df.index > cutoff_date2) & (nsw_df.index <= cutoff_date1)].copy()
-    # print(f'nsw_df columns: {test_df.shape[1]}')  # dubugging line
-
-    val_df = nsw_df[nsw_df.index > cutoff_date1].copy()
-    # print(f'val_df columns: {val_df.shape[1]}')  # dubugging line
-
-    # normalize the training data, save scaler
-    train_df, scalers = normalize_columns(
-        train_df,
-        column_mapping
-    )
-
-    # encode cyclical features for train and test df
-    for col, max_val in max_values.items():
-        train_df = encode_cyclical_features(train_df, col, max_val)
-        # print(f'encoded train_df columns: {test_df.shape[1]}')
-        test_df = encode_cyclical_features(test_df, col, max_val)
-        # print(f'encoded test_df columns: {test_df.shape[1]}')
-
-    # apply the saved scalers to the test data without fitting
-    for original_col, normalized_col in column_mapping.items():
-        test_df.loc[:, normalized_col] = scalers[original_col].transform(test_df[[original_col]])
-
-    label_col = 'normalised_total_demand'
-
-    input_size = len(input_features)
-    # print(f'input size: {input_size}')
-
-    train_dataset = DemandDataset(
-        train_df[input_features + [label_col]],
-        label_col=label_col,
-        sequence_length=LstmCFG.seq_length
-    )
-
-    tscv = TimeSeriesSplit(n_splits=LstmCFG.n_folds)
-    X = np.array(train_df[input_features])
-    y = np.array(train_df[label_col])
-    all_folds_test_losses = []
-    all_folds_train_losses = []
-
-    for fold, (train_index, val_index) in enumerate(tscv.split(train_df)):
-        # print(f"Fold {fold + 1}/{LstmCFG.n_folds}")  # dubugging line
-        epoch_train_losses = []
-        epoch_test_losses = []
-
-        # prepare train & test sequences
-        train_sequences = DemandDataset(
-            df=train_df.iloc[train_index],
+        train_dataset = DemandDataset(
+            train_df[input_features + [label_col]],
             label_col=label_col,
             sequence_length=LstmCFG.seq_length
         )
-        # print(f"train sequences: {len(train_sequences)}")  # dubugging line
 
-        test_sequences = DemandDataset(
-            df=train_df.iloc[val_index],
-            label_col=label_col,
-            sequence_length=LstmCFG.seq_length
+        tscv = TimeSeriesSplit(n_splits=LstmCFG.n_folds)
+        X = np.array(train_df[input_features])
+        y = np.array(train_df[label_col])
+        all_folds_test_losses = []
+        all_folds_train_losses = []
+
+        for fold, (train_index, val_index) in enumerate(tscv.split(train_df)):
+            # print(f"Fold {fold + 1}/{LstmCFG.n_folds}")  # dubugging line
+            epoch_train_losses = []
+            epoch_test_losses = []
+
+            # prepare train & test sequences
+            train_sequences = DemandDataset(
+                df=train_df.iloc[train_index],
+                label_col=label_col,
+                sequence_length=LstmCFG.seq_length
+            )
+            # print(f"train sequences: {len(train_sequences)}")  # dubugging line
+
+            test_sequences = DemandDataset(
+                df=train_df.iloc[val_index],
+                label_col=label_col,
+                sequence_length=LstmCFG.seq_length
+            )
+            # print(f"test sequences: {len(test_sequences)}")  # dubugging line
+
+            # train loader
+            train_loader = DataLoader(
+                train_sequences,
+                batch_size=LstmCFG.batch_size,
+                shuffle=False
+            )
+            # print(f"train loader: {len(train_loader)}")  # dubugging line
+
+            # test loader
+            test_loader = DataLoader(
+                test_sequences,
+                batch_size=LstmCFG.batch_size,
+                shuffle=False
+            )
+            # print(f"test loader: {len(test_loader)}")  # dubugging line
+
+            # re-initialise model and optimiser at start of each fold
+            model = LSTMModel(
+                input_size=LstmCFG.input_size,
+                hidden_layer_size=LstmCFG.hidden_units,
+                output_size=LstmCFG.output_size,
+                dropout=LstmCFG.dropout,
+                num_layers=LstmCFG.num_layers
+            ).to(device)
+
+            # optimiser
+            optimizer = optim.Adam(
+                model.parameters(),
+                lr=LstmCFG.lr,
+                weight_decay=LstmCFG.weight_decay
+            )
+
+            # learning rate scheduler
+            lr_scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=LstmCFG.lrs_step_size,
+                gamma=LstmCFG.lrs_gamma
+            )
+
+            # loss function
+            loss_function = nn.L1Loss()
+
+            # early stopping
+            early_stopping = EarlyStopping(
+                patience=10,
+                verbose=True,
+                path='model_checkpoint.pt'
+            )
+
+            # training loop for the current fold
+            for epoch in range(LstmCFG.epochs):
+                total_train_loss = 0
+                total_test_loss = 0
+                num_train_batches = 0
+                num_test_batches = 0
+
+                model.train()
+                for sequences, labels in tqdm(train_loader, desc=f"Training Epoch {epoch + 1}"):
+                    sequences, labels = sequences.to(device), labels.to(device)
+                    optimizer.zero_grad()
+                    # print(f"Input sequence shape: {sequences.shape}")  # dubugging line
+                    y_pred = model(sequences)
+                    loss = loss_function(y_pred, labels)
+                    loss.backward()
+                    optimizer.step()
+                    total_train_loss += loss.item()
+                    num_train_batches += 1
+                lr_scheduler.step()
+                if CFG.logging:
+                    wandb.log({"learning_rate": lr_scheduler.get_last_lr()[0]})
+
+                avg_train_loss = total_train_loss / num_train_batches
+                if CFG.logging:
+                    wandb.log({"training loss": avg_train_loss})
+
+                epoch_train_losses.append(avg_train_loss)
+
+                # test loop for current fold
+                model.eval()
+                with torch.no_grad():
+                    for sequences, labels in tqdm(test_loader, desc=f"Test Epoch {epoch + 1}"):
+                        sequences, labels = sequences.to(device), labels.to(device)
+                        y_pred = model(sequences)
+                        total_test_loss += loss_function(y_pred, labels).item()
+                        num_test_batches += 1
+                avg_test_loss = total_test_loss / num_test_batches
+
+                if CFG.logging:
+                    wandb.log(
+                        {
+                            "test loss": avg_test_loss,
+                            "gap": avg_train_loss - avg_test_loss
+                         }
+                    )
+                epoch_test_losses.append(avg_test_loss)
+                print(f"""
+                Epoch {epoch + 1},
+                Learning Rate: {lr_scheduler.get_last_lr()[0]:.6f},
+                Train Loss: {avg_train_loss:.4f}, 
+                Test Loss: {avg_test_loss:.4f},
+                gap: {avg_train_loss - avg_test_loss:.4f}
+                """)
+
+                early_stopping(avg_test_loss, model)
+                if early_stopping.early_stop:
+                    print("Early stopping triggered")
+                    torch.save(model.state_dict(),
+                               'model_checkpoint.pt')
+                    break
+            model.load_state_dict(torch.load('model_checkpoint.pt'))
+            artifact = wandb.Artifact('model_artifact', type='model')
+            artifact.add_file('model_checkpoint.pt')
+            if CFG.logging:
+                wandb.save('model_checkpoint.pt')
+
+            best_train_loss = min(epoch_train_losses)
+            all_folds_train_losses.append(best_train_loss)
+
+            best_test_loss = min(epoch_test_losses)
+            all_folds_test_losses.append(best_test_loss)
+
+            print(f"Best Train Loss in fold {fold + 1}: {best_train_loss:.4f}")
+            print(f"Best Test Loss in fold {fold + 1}: {best_test_loss:.4f}")
+
+            plot_loss_curves(
+                epoch_train_losses,
+                epoch_test_losses,
+                title=f"Fold {fold} Loss Curves"
+            )
+
+        model_train_loss = sum(all_folds_train_losses) / len(all_folds_train_losses)
+        if CFG.logging:
+            wandb.log({"model training loss": model_train_loss})
+        print(f"Model train loss: {model_train_loss:.4f}")
+
+        model_test_loss = sum(all_folds_test_losses) / len(all_folds_test_losses)
+        if CFG.logging:
+            wandb.log({"model test loss": model_test_loss})
+        print(f"Model test loss: {model_test_loss:.4f}")
+
+        model_gap = model_train_loss - model_test_loss
+        if CFG.logging:
+            wandb.log({"model gap": model_gap})
+            wandb.finish()
+        # Save scalers after training
+        joblib.dump(scalers, 'scalers.pkl')
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    # todo: wandb sweeps to optimise hyperparameters
+    # todo: inference, ensemble
+
+    # Inference
+    else:
+        CFG = LstmCFG()
+        nsw_df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
+        nsw_df.drop(
+            columns=['daily_avg_actual', 'daily_avg_forecast'],
+            inplace=True
         )
-        # print(f"test sequences: {len(test_sequences)}")  # dubugging line
+        # print(f'nsw_df columns: {nsw_df.shape[1]}') # number of columns in df
 
-        # train loader
-        train_loader = DataLoader(
-            train_sequences,
-            batch_size=LstmCFG.batch_size,
-            shuffle=False
-        )
-        # print(f"train loader: {len(train_loader)}")  # dubugging line
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        # test loader
-        test_loader = DataLoader(
-            test_sequences,
-            batch_size=LstmCFG.batch_size,
-            shuffle=False
-        )
-        # print(f"test loader: {len(test_loader)}")  # dubugging line
+        # define a cutoff date from the last date in df
+        cutoff_date1 = nsw_df.index.max() - pd.Timedelta(days=7)
 
-        # re-initialise model and optimiser at start of each fold
+        val_df = nsw_df[nsw_df.index > cutoff_date1].copy()
+        # print(f'val_df columns: {val_df.shape[1]}')  # dubugging line
+
+        scalers = joblib.load('scalers.pkl')
+
+        # # initialize the model
         model = LSTMModel(
             input_size=LstmCFG.input_size,
             hidden_layer_size=LstmCFG.hidden_units,
             output_size=LstmCFG.output_size,
             dropout=LstmCFG.dropout,
             num_layers=LstmCFG.num_layers
-        ).to(device)
-
-        # optimiser
-        optimizer = optim.Adam(
-            model.parameters(),
-            lr=LstmCFG.lr,
-            weight_decay=LstmCFG.weight_decay
         )
 
-        # learning rate scheduler
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer,
-            step_size=LstmCFG.lrs_step_size,
-            gamma=LstmCFG.lrs_gamma
-        )
-
-        # loss function
-        loss_function = nn.L1Loss()
-
-        # early stopping
-        early_stopping = EarlyStopping(
-            patience=10,
-            verbose=True,
-            path='model_checkpoint.pt'
-        )
-
-        # training loop for the current fold
-        for epoch in range(LstmCFG.epochs):
-            total_train_loss = 0
-            total_test_loss = 0
-            num_train_batches = 0
-            num_test_batches = 0
-
-            model.train()
-            for sequences, labels in tqdm(train_loader, desc=f"Training Epoch {epoch + 1}"):
-                sequences, labels = sequences.to(device), labels.to(device)
-                optimizer.zero_grad()
-                # print(f"Input sequence shape: {sequences.shape}")  # dubugging line
-                y_pred = model(sequences)
-                loss = loss_function(y_pred, labels)
-                loss.backward()
-                optimizer.step()
-                total_train_loss += loss.item()
-                num_train_batches += 1
-            lr_scheduler.step()
-            if CFG.logging:
-                wandb.log({"learning_rate": lr_scheduler.get_last_lr()[0]})
-
-            avg_train_loss = total_train_loss / num_train_batches
-            if CFG.logging:
-                wandb.log({"training loss": avg_train_loss})
-
-            epoch_train_losses.append(avg_train_loss)
-
-            # test loop for current fold
-            model.eval()
-            with torch.no_grad():
-                for sequences, labels in tqdm(test_loader, desc=f"Test Epoch {epoch + 1}"):
-                    sequences, labels = sequences.to(device), labels.to(device)
-                    y_pred = model(sequences)
-                    total_test_loss += loss_function(y_pred, labels).item()
-                    num_test_batches += 1
-            avg_test_loss = total_test_loss / num_test_batches
-
-            if CFG.logging:
-                wandb.log(
-                    {
-                        "test loss": avg_test_loss,
-                        "gap": avg_train_loss - avg_test_loss
-                     }
-                )
-            epoch_test_losses.append(avg_test_loss)
-            print(f"""
-            Epoch {epoch + 1},
-            Learning Rate: {lr_scheduler.get_last_lr()[0]:.6f},
-            Train Loss: {avg_train_loss:.4f}, 
-            Test Loss: {avg_test_loss:.4f},
-            gap: {avg_train_loss - avg_test_loss:.4f}
-            """)
-
-            early_stopping(avg_test_loss, model)
-            if early_stopping.early_stop:
-                print("Early stopping triggered")
-                torch.save(model.state_dict(),
-                           'model_checkpoint.pt')
-                break
+        # # load the state dictionary
         model.load_state_dict(torch.load('model_checkpoint.pt'))
-        artifact = wandb.Artifact('model_artifact', type='model')
-        artifact.add_file('model_checkpoint.pt')
-        if CFG.logging:
-            wandb.save('model_checkpoint.pt')
 
-        best_train_loss = min(epoch_train_losses)
-        all_folds_train_losses.append(best_train_loss)
+        # # call model.eval() to set dropout and batch normalization layers to
+        # # evaluation mode before running inference.
+        model.eval()
 
-        best_test_loss = min(epoch_test_losses)
-        all_folds_test_losses.append(best_test_loss)
+        # Now you can use model for inference
 
-        print(f"Best Train Loss in fold {fold + 1}: {best_train_loss:.4f}")
-        print(f"Best Test Loss in fold {fold + 1}: {best_test_loss:.4f}")
+        # Encoding cyclical features for val_df
+        for col, max_val in max_values.items():
+            val_df = encode_cyclical_features(val_df, col, max_val)
 
-        plot_loss_curves(
-            epoch_train_losses,
-            epoch_test_losses,
-            title=f"Fold {fold} Loss Curves"
+        for original_col, normalized_col in column_mapping.items():
+            val_df.loc[:, normalized_col] = scalers[original_col].transform(
+                val_df[[original_col]])
+
+        # Prepare the validation dataset
+        val_dataset = DemandDataset(
+            val_df[input_features + ['TOTALDEMAND']],
+            label_col=val_df['TOTALDEMAND'],
+            sequence_length=LstmCFG.seq_length
         )
 
-    model_train_loss = sum(all_folds_train_losses) / len(all_folds_train_losses)
-    if CFG.logging:
-        wandb.log({"model training loss": model_train_loss})
-    print(f"Model train loss: {model_train_loss:.4f}")
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=LstmCFG.batch_size,
+            shuffle=False
+        )
 
-    model_test_loss = sum(all_folds_test_losses) / len(all_folds_test_losses)
-    if CFG.logging:
-        wandb.log({"model test loss": model_test_loss})
-    print(f"Model test loss: {model_test_loss:.4f}")
+        predictions = []
+        actuals = []
 
-    model_gap = model_train_loss - model_test_loss
-    if CFG.logging:
-        wandb.log({"model gap": model_gap})
-        wandb.finish()
+        with torch.no_grad():
+            for sequences, labels in val_loader:
+                sequences, labels = sequences.to(device), labels.to(device)
+                output = model(sequences)
+                predictions.extend(output.cpu().numpy())
+                actuals.extend(labels.cpu().numpy())
 
-    gc.collect()
-    torch.cuda.empty_cache()
+        # Assuming 'total_demand' was scaled using MinMaxScaler as an example
+        predictions = scalers['TOTALDEMAND'].inverse_transform(
+            np.array(predictions).reshape(-1, 1)).flatten()
+        actuals = scalers['TOTALDEMAND'].inverse_transform(
+            np.array(actuals).reshape(-1, 1)).flatten()
 
-    # todo: wandb sweeps to optimise hyperparameters
-    # todo: inference, ensemble
-
-    # # initialize the model
-    # model = LSTMModel(
-    #     input_size=LstmCFG.input_size,
-    #     hidden_layer_size=LstmCFG.hidden_layer_size,
-    #     output_size=LstmCFG.output_size,
-    #     dropout=LstmCFG.dropout,
-    #     num_layers=LstmCFG.num_layers
-    # )
-
-    # # load the state dictionary
-    # model.load_state_dict(torch.load('model_final.pt'))
-
-    # # call model.eval() to set dropout and batch normalization layers to
-    # # evaluation mode before running inference.
-    # model.eval()
-
-    # # Now you can use model for inference
+        # Plotting the predictions against the actuals
+        plt.figure(figsize=(10, 5))
+        plt.plot(predictions, label='Predicted Demand')
+        plt.plot(actuals, label='Actual Demand')
+        plt.title('Comparison of Predicted and Actual Electricity Demand')
+        plt.xlabel('Time')
+        plt.ylabel('Electricity Demand')
+        plt.legend()
+        plt.show()
