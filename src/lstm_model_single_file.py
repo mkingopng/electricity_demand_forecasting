@@ -556,7 +556,7 @@ if __name__ == "__main__":
 
         scalers = joblib.load('scalers.pkl')
 
-        # # initialize the model
+        # initialize the model
         model = LSTMModel(
             input_size=LstmCFG.input_size,
             hidden_layer_size=LstmCFG.hidden_units,
@@ -568,8 +568,8 @@ if __name__ == "__main__":
         # # load the state dictionary
         model.load_state_dict(torch.load('model_checkpoint.pt'))
 
-        # # call model.eval() to set dropout and batch normalization layers to
-        # # evaluation mode before running inference.
+        # call model.eval() to set dropout and batch normalization layers to
+        # evaluation mode before running inference.
         model.eval()
 
         # Now you can use model for inference
@@ -610,6 +610,10 @@ if __name__ == "__main__":
             np.array(predictions).reshape(-1, 1)).flatten()
         actuals = scalers['TOTALDEMAND'].inverse_transform(
             np.array(actuals).reshape(-1, 1)).flatten()
+
+        # Calculate Mean Absolute Error
+        mae = np.mean(np.abs(predictions - actuals))
+        print(f"Mean Absolute Error (MAE): {mae:.2f}")
 
         # Plotting the predictions against the actuals
         plt.figure(figsize=(10, 5))
