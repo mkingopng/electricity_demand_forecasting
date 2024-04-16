@@ -23,6 +23,8 @@ class CFG:
     wandb_run_name = 'xgboost'
     data_path = './../data/NSW'
     images_path = './../images/xgb'
+    models_path = './../trained_models/'
+    train = False
     logging = False  # set to True to enable W&B logging
     img_dim1 = 20
     img_dim2 = 10
@@ -207,31 +209,6 @@ def wandb_callback():
 
 
 if __name__ == "__main__":
-    CFG = CFG()
-
-    # sweep_id = wandb.sweep(CFG.sweep_config, project=CFG.wandb_project_name)
-
-    config_dict = {
-        "n_in": 6,
-        "n_test": 30,
-        "wandb_project_name": 'electricity_demand_forecasting',
-        "wandb_run_name": 'xgboost',
-        "param_grid": {
-            'max_depth': [3, 5, 7],
-            'learning_rate': [0.01, 0.1, 0.3],
-            'n_estimators': [100, 500, 1000],
-        }
-    }
-
-    # initialize W&B if CFG.logging=True
-    if CFG.logging:
-        run = wandb.init(
-            project=CFG.wandb_project_name,
-            name=f'{CFG.wandb_run_name}_v{CFG.version}',
-            config=config_dict,
-            job_type='train_model'
-        )
-
     # load data
     df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
     df.drop(columns=['daily_avg_actual', 'daily_avg_forecast'], inplace=True)
@@ -255,7 +232,8 @@ if __name__ == "__main__":
     n_obs = CFG.n_in * len(df.columns)
 
     # split into input and outputs, with the last CFG.n_test rows for testing
-    trainX, trainy = train_supervised.iloc[:, :-1], train_supervised.iloc[:, -1]
+    trainX, trainy = train_supervised.iloc[:, :-1], train_supervised.iloc[:,
+                                                    -1]
     testX, testy = test_supervised.iloc[:, :-1], test_supervised.iloc[:, -1]
     valX, valy = val_supervised.iloc[:, :-1], val_supervised.iloc[:, -1]
     # print(f'train shape: {train.shape}')
@@ -266,71 +244,101 @@ if __name__ == "__main__":
     dtest = xgb.DMatrix(testX, label=testy)
     dval = xgb.DMatrix(valX, label=valy)
 
-    # train the model
-    bst = xgb.train(
-        CFG.params,
-        dtrain,
-        num_boost_round=1000,
-        evals=[(dtrain, 'train'), (dtest, 'test')],
-        early_stopping_rounds=50,
-        callbacks=[WandbCallback()] if CFG.logging else []
-    )
-    # print(testy)
+    if CFG.train:
+        CFG = CFG()
+        # sweep_id = wandb.sweep(CFG.sweep_config, project=CFG.wandb_project_name)
 
-    # evaluate model
-    yhat = bst.predict(dtest)
-    # print(yhat)
+        config_dict = {
+            "n_in": 6,
+            "n_test": 30,
+            "wandb_project_name": 'electricity_demand_forecasting',
+            "wandb_run_name": 'xgboost',
+            "param_grid": {
+                'max_depth': [3, 5, 7],
+                'learning_rate': [0.01, 0.1, 0.3],
+                'n_estimators': [100, 500, 1000],
+            }
+        }
 
-    error = mean_absolute_error(testy, yhat)
-    # print(f'Mean Absolute Error: {error}')
+        # initialize W&B if CFG.logging=True
+        if CFG.logging:
+            run = wandb.init(
+                project=CFG.wandb_project_name,
+                name=f'{CFG.wandb_run_name}_v{CFG.version}',
+                config=config_dict,
+                job_type='train_model'
+            )
 
-    actual = testy
-    predicted = yhat
+        # train the model
+        bst = xgb.train(
+            CFG.params,
+            dtrain,
+            num_boost_round=1000,
+            evals=[(dtrain, 'train'), (dtest, 'test')],
+            early_stopping_rounds=50,
+            callbacks=[WandbCallback()] if CFG.logging else []
+        )
+        # print(testy)
 
-    # evaluate model on validation set
-    val_predictions = bst.predict(dval)
-    val_error = mean_absolute_error(valy, val_predictions)
-    print(f'Validation MAE: {val_error}')
+        # evaluate model
+        yhat = bst.predict(dtest)
+        # print(yhat)
 
-    # log validation MAE to W&B
-    if CFG.logging:
-        wandb.log({"Validation MAE": val_error})
+        error = mean_absolute_error(testy, yhat)
+        # print(f'Mean Absolute Error: {error}')
 
-    # plot validation predictions vs actual
-    val_dates = pd.date_range(
-        start=df_val.index[0],
-        periods=len(valy),
-        freq='30min'
-    )
+        actual = testy
+        predicted = yhat
 
-    plt.figure(figsize=(15, 7))
-    plt.plot(
-        val_dates,
-        valy,
-        label='Actual',
-        marker='.',
-        linestyle='-'
-    )
+        bst.save_model(os.path.join(CFG.models_path, 'xgb_model.json'))
 
-    plt.plot(
-        val_dates,
-        val_predictions,
-        label='Predicted',
-        marker='.',
-        linestyle='--'
-    )
+        # log test MAE to W&B
+        if CFG.logging:
+            run.log({"Test MAE": error})
+            run.finish()
 
-    plt.title('Validation Set: Actual vs Predicted Demand')
-    plt.xlabel('Date Time')
-    plt.ylabel('Total Demand')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(CFG.images_path, 'xgb_val_predictions.png'))
-    plt.show()
+    else:
+        bst = xgb.Booster()
+        bst.load_model(os.path.join(CFG.models_path, 'xgb_model.json'))
 
-    # log test MAE to W&B
-    if CFG.logging:
-        run.log({"Test MAE": error})
-        run.finish()
+        # evaluate model on validation set
+        val_predictions = bst.predict(dval)
+        val_error = mean_absolute_error(valy, val_predictions)
+        print(f'Validation MAE: {val_error}')
 
-    plt.close()  # close the plot to free up memory
+        # log validation MAE to W&B
+        if CFG.logging:
+            wandb.log({"Validation MAE": val_error})
+
+        # plot validation predictions vs actual
+        val_dates = pd.date_range(
+            start=df_val.index[0],
+            periods=len(valy),
+            freq='30min'
+        )
+
+        plt.figure(figsize=(CFG.img_dim1, CFG.img_dim2))
+        plt.plot(
+            val_dates,
+            valy,
+            label='Actual',
+            marker='.',
+            linestyle='-'
+        )
+
+        plt.plot(
+            val_dates,
+            val_predictions,
+            label='Predicted',
+            marker='.',
+            linestyle='--'
+        )
+
+        plt.title('Validation Set: Actual vs Predicted Demand')
+        plt.xlabel('Date Time')
+        plt.ylabel('Total Demand')
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(CFG.images_path, 'xgb_val_predictions.png'))
+        plt.show()
+        plt.close()  # close the plot to free up memory
