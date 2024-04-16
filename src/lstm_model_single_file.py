@@ -1,14 +1,5 @@
 """
-As this model has become more complex, GPU support has become essential to
-speed up training. It is impractical to train on CPU only. Training on GPU
-takes >3 hours with current architecture
 
-lstm model
-- 4x LSTM layers
-- bidirectional LSTM
-- 50 hidden units
-- linear layer
-- Tanh activation layer
 """
 import gc
 import os
@@ -39,15 +30,15 @@ class LstmCFG:
     wandb_project_name = 'electricity_demand_forecasting'
     wandb_run_name = 'lstm'
     data_path = './../data/NSW'
-    logging = True
-    train = True
-    version = 32  # increment for each training run
-    n_folds = 6
-    epochs = 30  # dont touch me
+    logging = False
+    train = False
+    version = 37  # increment for each training run
+    n_folds = 2
+    epochs = 2
     n_features = 33
     input_size = 33
-    num_layers = 10
-    hidden_units = 50  # change me
+    num_layers = 1
+    hidden_units = 50
     output_size = 1
     batch_size = 1024
     seq_length = 336  # 336 one week of 30-minute sample intervals
@@ -59,38 +50,41 @@ class LstmCFG:
 
 
 class DemandDataset(Dataset):
-    def __init__(self, df, label_col, sequence_length=LstmCFG.seq_length):
+    def __init__(self, df, label_col, sequence_length=LstmCFG.seq_length, forecast_horizon=336):
         """
-        Initializes the dataset with the dataframe, label column, and sequence
-        length
-        :param df: The dataframe containing the dataset
-        :param label_col: The target variable
-        :param sequence_length:
-        :return:
+        initializes the dataset with the dataframe, label column, sequence
+        length, and forecast horizon
+        :param df: the dataframe containing the dataset
+        :param label_col: the target variable column name
+        :param sequence_length: number of time steps in each input sequence
+        :param forecast_horizon: number of future time steps to predict
         """
         self.df = df
         self.label_col = label_col
         self.sequence_length = sequence_length
+        self.forecast_horizon = forecast_horizon
 
     def __len__(self):
         """
-        returns the total number of samples that can be generated from the
-        dataframe
-        :return: the total number of samples
+        returns the total number of samples that can be generated from the df,
+        adjusted for the sequence length and forecast horizon
         """
-        return len(self.df) - self.sequence_length
+        # ensure non-negative length
+        total_length = len(self.df) - self.sequence_length - self.forecast_horizon + 1
+        return max(0, total_length)
 
     def __getitem__(self, index):
         """
         generates a sample from the dataset at the specified index
         :param index: the index of the sample to generate
-        :return: (tuple) a tuple containing the sequence tensor and the label
-        tensor
+        :return: a tuple containing the input sequence and the target labels
         """
         sequence = self.df.iloc[index:index + self.sequence_length].drop(self.label_col, axis=1)
-        label = self.df.iloc[index + self.sequence_length][self.label_col]
-        sequence_tensor = torch.tensor(sequence.values, dtype=torch.float)
-        label_tensor = torch.tensor([label], dtype=torch.float)
+        label_start = index + self.sequence_length
+        label_end = label_start + self.forecast_horizon
+        labels = self.df.iloc[label_start:label_end][self.label_col].values
+        sequence_tensor = torch.tensor(sequence.values, dtype=torch.float32)
+        label_tensor = torch.tensor(labels, dtype=torch.float32).view(-1, 1)  # reshape to [forecast_horizon, 1]
         return sequence_tensor, label_tensor
 
 
@@ -106,7 +100,6 @@ class LSTMModel(nn.Module):
         :param num_layers: the number of layers in the LSTM
         """
         super(LSTMModel, self).__init__()
-        self.hidden_layer_size = hidden_layer_size
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_layer_size,
@@ -114,30 +107,30 @@ class LSTMModel(nn.Module):
             batch_first=True,
             bidirectional=True)
         self.dropout = nn.Dropout(dropout)
-        self.linear = nn.Linear(hidden_layer_size * 2, output_size)
+        self.linear = nn.Linear(100, 1)
         self.tanh = nn.Tanh()
 
-    def forward(self, input_seq):
+    def forward(self, x):
         """
         defines the forward pass of the model
-        :param input_seq: (Tensor) The input sequence to the LSTM model
-        :return: Tensor: the predictions made by the model
+        :param x: the input sequence tensor
+        :return: the output tensor
         """
         self.lstm.flatten_parameters()
-        lstm_out, _ = self.lstm(input_seq)
-        # print(f"LSTM output shape: {lstm_out.shape}")  # Debugging line
-        last_timestep_output = lstm_out[:, -1, :]
-        # print(f"Last timestep output shape: {last_timestep_output.shape}") # Debugging line
-        dropped_out = self.dropout(last_timestep_output)
-        linear_output = self.linear(dropped_out)
-        predictions = self.tanh(linear_output)
-        # print(f"Predictions shape: {predictions.shape}") # Debugging line
-        return predictions
+        print(f"Input shape to LSTM: {x.shape}")
+        x, _ = self.lstm(x)
+        print(f"Output shape from LSTM: {x.shape}")
+        x = self.dropout(x)
+        x = self.linear(x)
+        print(f"Shape after linear layer: {x.shape}")
+        x = self.tanh(x)
+        print(f"Final output shape: {x.shape}")
+        return x
 
 
 class EarlyStopping:
     """
-    Early stopping to stop the training when the loss does not improve after
+    early stopping to stop the training when the loss does not improve after
     """
     def __init__(self, patience=5, delta=0, path='checkpoint.pt', verbose=False):
         """
@@ -155,22 +148,22 @@ class EarlyStopping:
         self.counter = 0
         self.best_score = None
         self.early_stop = False
-        self.val_loss_min = np.Inf
+        self.test_loss_min = np.Inf
         self.delta = delta
         self.path = path
         self.verbose = verbose
 
-    def __call__(self, val_loss, model):
+    def __call__(self, test_loss, model):
         """
         calls the EarlyStopping instance during training to check if early
         stopping criteria are met
-        :param val_loss: the current validation loss
+        :param test_loss: the current validation loss
         :param model: the model being trained
         """
-        score = -val_loss
+        score = -test_loss
         if self.best_score is None:
             self.best_score = score
-            self.save_checkpoint(val_loss, model)
+            self.save_checkpoint(test_loss, model)
         elif score < self.best_score + self.delta:
             self.counter += 1
             if self.verbose:
@@ -179,33 +172,47 @@ class EarlyStopping:
                 self.early_stop = True
         else:
             self.best_score = score
-            self.save_checkpoint(val_loss, model)
+            self.save_checkpoint(test_loss, model)
             self.counter = 0
 
-    def save_checkpoint(self, val_loss, model):
+    def save_checkpoint(self, test_loss, model):
         """
         Saves the current best model if the validation loss decreases
-        :param val_loss: the current validation loss
+        :param test_loss: the current validation loss
         :param model: the model to be saved
         """
         if self.verbose:
-            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+            print(f'Test loss decreased ({self.test_loss_min:.6f} --> {test_loss:.6f}). Saving model...')
         torch.save(model.state_dict(), self.path)
-        self.val_loss_min = val_loss
+        self.test_loss_min = test_loss
+
+    def reset(self):
+        """
+        resets the early stopping counter and best score
+        """
+        self.counter = 0
+        self.best_score = None
+        self.test_loss_min = np.Inf
 
 
-def encode_cyclical_features(df, column, max_value):
+def encode_cyclical_features(df, column, max_value, inplace=True):
     """
-    transforms a cyclical feature in a DataFrame to two features using sine and
-    cosine transformation to capture the cyclical relationship in a way that
-    can be understood by machine learning models
-    :param df: df containing the cyclical feature to be encoded
-    :param column: name of the column to be transformed
-    :param max_value: The maximum value the cyclical feature can take. used to
-    normalise the data
+    Transforms a cyclical feature in a DataFrame to two features using sine and
+    cosine transformations.
+    :param df: DataFrame containing the cyclical feature to be encoded.
+    :param column: Name of the column to be transformed.
+    :param max_value: The maximum value the cyclical feature can take, used to
+    normalize the data.
+    :param inplace: Whether to modify the DataFrame in place or return a new df
     :return: DataFrame with the original column replaced by its sine and cosine
-    encoded values
+    encoded values.
     """
+    if not inplace:
+        df = df.copy()
+    if column not in df.columns:
+        raise ValueError(f"Column {column} not found in DataFrame.")
+    if max_value == 0:
+        raise ValueError("max_value cannot be zero.")
     df.loc[:, column + '_sin'] = np.sin(2 * np.pi * df[column] / max_value)
     df.loc[:, column + '_cos'] = np.cos(2 * np.pi * df[column] / max_value)
     return df
@@ -220,8 +227,11 @@ def plot_loss_curves(train_losses, test_losses, title="Loss Curves"):
     """
     epochs = range(1, len(train_losses) + 1)
     fig, ax = plt.subplots()
-    ax.plot(epochs, train_losses, 'bo-', label='Training Loss')
-    ax.plot(epochs, test_losses, 'ro-', label='Test Loss')
+    if train_losses:
+        ax.plot(epochs, train_losses, 'bo-', label='Training Loss')
+    if test_losses:
+        test_epochs = range(1, len(test_losses) + 1)
+        ax.plot(test_epochs, test_losses, 'ro-', label='Test Loss')
     ax.set_title(title)
     ax.set_xlabel("Epochs")
     ax.set_ylabel("Loss")
@@ -233,14 +243,14 @@ def plot_loss_curves(train_losses, test_losses, title="Loss Curves"):
 
 def set_seed(seed_value=42):
     """
-    Set seed for reproducibility
+    set seed for reproducibility
     """
-    random.seed(seed_value)  # Python random module
-    np.random.seed(seed_value)  # Numpy
-    torch.manual_seed(seed_value)  # PyTorch
-    torch.cuda.manual_seed(seed_value)  # For CUDA
-    torch.cuda.manual_seed_all(seed_value)  # For multi-GPU
-    os.environ['PYTHONHASHSEED'] = str(seed_value)  # Python hash seed
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    torch.manual_seed(seed_value)
+    torch.cuda.manual_seed(seed_value)
+    torch.cuda.manual_seed_all(seed_value)
+    os.environ['PYTHONHASHSEED'] = str(seed_value)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
@@ -279,9 +289,97 @@ input_features = [
     ]
 
 if __name__ == "__main__":
-    if LstmCFG.train:
-        set_seed(seed_value=42)
+    ##########################################################################
+    # load data
+    ##########################################################################
+    nsw_df = pd.read_parquet(os.path.join(LstmCFG.data_path, 'nsw_df.parquet'))
+    nsw_df.drop(
+        columns=['daily_avg_actual', 'daily_avg_forecast'],
+        inplace=True
+    )
+    # print(f'nsw_df columns: {nsw_df.shape[1]}')  # number of columns in df
 
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+##############################################################################
+    # split dataset into train, test, and validation sets
+##############################################################################
+    # define a cutoff date from the last date in df
+    cutoff_date1 = nsw_df.index.max() - pd.Timedelta(days=14)
+    cutoff_date2 = nsw_df.index.max() - pd.Timedelta(days=28)
+
+    # split the data using cutoff date
+    train_df = nsw_df[nsw_df.index <= cutoff_date2].copy()
+    # print(f'train_df columns: {train_df.shape[1]}')  # dubugging line
+
+    test_df = nsw_df[(nsw_df.index > cutoff_date2) & (nsw_df.index <= cutoff_date1)].copy()
+    # print(f'nsw_df columns: {test_df.shape[1]}')  # dubugging line
+
+    val_df = nsw_df[nsw_df.index > cutoff_date1].copy()
+    # print(f'val_df columns: {val_df.shape[1]}')  # dubugging line
+
+##############################################################################
+    # normalize the training data, save scaler
+##############################################################################
+    train_df, scalers = normalize_columns(
+        train_df,
+        column_mapping
+    )
+    print(f'train_df shape: {train_df.shape}')
+
+    val_df, scalers = normalize_columns(
+        val_df,
+        column_mapping
+    )
+    print(f'val_df shape: {val_df.shape}')
+
+##############################################################################
+    # encode cyclical features for train, test and val df
+##############################################################################
+    for col, max_val in max_values.items():
+        train_df = encode_cyclical_features(train_df, col, max_val)
+        # print(f'encoded train_df columns: {test_df.shape[1]}')  # dubugging line
+
+        test_df = encode_cyclical_features(test_df, col, max_val)
+        # print(f'encoded test_df columns: {test_df.shape[1]}')  # dubugging line
+
+        val_df = encode_cyclical_features(val_df, col, max_val)
+        # print(f'encoded val_df columns: {val_df.shape[1]}')  # dubugging line
+
+##############################################################################
+    # normalize the test data
+    # apply the saved scalers to the test data without fitting
+    for original_col, normalized_col in column_mapping.items():
+        train_df.loc[:, normalized_col] = scalers[original_col].transform(
+            train_df[[original_col]])
+
+        test_df.loc[:, normalized_col] = scalers[original_col].transform(
+            test_df[[original_col]])
+
+        val_df.loc[:, normalized_col] = scalers[original_col].transform(
+            val_df[[original_col]])
+
+    label_col = 'normalised_total_demand'
+
+    input_size = len(input_features)
+    print(f'input size: {input_size}')
+
+    train_dataset = DemandDataset(
+        train_df[input_features + [label_col]],
+        label_col=label_col,
+        sequence_length=LstmCFG.seq_length
+    )
+
+    val_dataset = DemandDataset(
+        val_df,
+        label_col='TOTALDEMAND',
+        sequence_length=LstmCFG.seq_length,
+        forecast_horizon=336
+    )
+
+    set_seed(seed_value=42)
+
+    if LstmCFG.train:
         CFG = LstmCFG()
 
         wandb_config = {
@@ -307,63 +405,21 @@ if __name__ == "__main__":
                 job_type='train_model'
             )
 
-        nsw_df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
-        nsw_df.drop(
-            columns=['daily_avg_actual', 'daily_avg_forecast'],
-            inplace=True
-        )
-        # print(f'nsw_df columns: {nsw_df.shape[1]}') # number of columns in df
-
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        # define a cutoff date from the last date in df
-        cutoff_date1 = nsw_df.index.max() - pd.Timedelta(days=7)
-        cutoff_date2 = nsw_df.index.max() - pd.Timedelta(days=14)
-
-        # split the data using cutoff date
-        train_df = nsw_df[nsw_df.index <= cutoff_date2].copy()
-        # print(f'train_df columns: {train_df.shape[1]}')  # dubugging line
-
-        test_df = nsw_df[(nsw_df.index > cutoff_date2) & (nsw_df.index <= cutoff_date1)].copy()
-        # print(f'nsw_df columns: {test_df.shape[1]}')  # dubugging line
-
-        val_df = nsw_df[nsw_df.index > cutoff_date1].copy()
-        # print(f'val_df columns: {val_df.shape[1]}')  # dubugging line
-
-        # normalize the training data, save scaler
-        train_df, scalers = normalize_columns(
-            train_df,
-            column_mapping
-        )
-
+###############################################################################
         # encode cyclical features for train and test df
-        for col, max_val in max_values.items():
-            train_df = encode_cyclical_features(train_df, col, max_val)
-            # print(f'encoded train_df columns: {test_df.shape[1]}')
-            test_df = encode_cyclical_features(test_df, col, max_val)
-            # print(f'encoded test_df columns: {test_df.shape[1]}')
+###############################################################################
 
-        # apply the saved scalers to the test data without fitting
-        for original_col, normalized_col in column_mapping.items():
-            test_df.loc[:, normalized_col] = scalers[original_col].transform(test_df[[original_col]])
 
-        label_col = 'normalised_total_demand'
-
-        input_size = len(input_features)
-        # print(f'input size: {input_size}')
-
-        train_dataset = DemandDataset(
-            train_df[input_features + [label_col]],
-            label_col=label_col,
-            sequence_length=LstmCFG.seq_length
-        )
-
+        # time series split
         tscv = TimeSeriesSplit(n_splits=LstmCFG.n_folds)
         X = np.array(train_df[input_features])
         y = np.array(train_df[label_col])
         all_folds_test_losses = []
         all_folds_train_losses = []
 
+##############################################################################
+        # loop through each fold
+##############################################################################
         for fold, (train_index, val_index) in enumerate(tscv.split(train_df)):
             # print(f"Fold {fold + 1}/{LstmCFG.n_folds}")  # dubugging line
             epoch_train_losses = []
@@ -430,74 +486,84 @@ if __name__ == "__main__":
             early_stopping = EarlyStopping(
                 patience=10,
                 verbose=True,
-                path='model_checkpoint.pt'
+                path='model_checkpoint.pth'
             )
 
+##############################################################################
             # training loop for the current fold
+##############################################################################
             for epoch in range(LstmCFG.epochs):
-                total_train_loss = 0
-                total_test_loss = 0
-                num_train_batches = 0
-                num_test_batches = 0
-
+                training_loss = 0
+                num_batches = 0
                 model.train()
+
                 for sequences, labels in tqdm(train_loader, desc=f"Training Epoch {epoch + 1}"):
                     sequences, labels = sequences.to(device), labels.to(device)
                     optimizer.zero_grad()
                     # print(f"Input sequence shape: {sequences.shape}")  # dubugging line
-                    y_pred = model(sequences)
-                    loss = loss_function(y_pred, labels)
+                    predictions = model(sequences)
+                    loss = loss_function(predictions, labels)
                     loss.backward()
                     optimizer.step()
-                    total_train_loss += loss.item()
-                    num_train_batches += 1
-                lr_scheduler.step()
-                if CFG.logging:
-                    wandb.log({"learning_rate": lr_scheduler.get_last_lr()[0]})
+                    training_loss += loss.item()
+                    num_batches += 1
 
-                avg_train_loss = total_train_loss / num_train_batches
-                if CFG.logging:
-                    wandb.log({"training loss": avg_train_loss})
+                # calculate average training loss
+                avg_train_loss = training_loss / num_batches
 
+                # append average training loss to list
                 epoch_train_losses.append(avg_train_loss)
 
-                # test loop for current fold
+##############################################################################
+                # test loop
+##############################################################################
                 model.eval()
+                total_test_loss = 0
                 with torch.no_grad():
                     for sequences, labels in tqdm(test_loader, desc=f"Test Epoch {epoch + 1}"):
                         sequences, labels = sequences.to(device), labels.to(device)
-                        y_pred = model(sequences)
-                        total_test_loss += loss_function(y_pred, labels).item()
-                        num_test_batches += 1
-                avg_test_loss = total_test_loss / num_test_batches
+                        predictions = model(sequences)
+                        # print(f"Predictions shape: {predictions.shape}, Labels shape: {labels.shape}")
+                        test_loss = loss_function(predictions, labels)
+                        total_test_loss += test_loss.item()
 
+                # early Stopping and logging
+                avg_test_loss = total_test_loss / len(test_loader)
+                epoch_test_losses.append(avg_test_loss)
+                early_stopping(avg_test_loss, model)
+                if early_stopping.early_stop:
+                    print("Early stopping triggered")
+                    break
+
+                # log losses for this epoch to Weights & Biases
                 if CFG.logging:
-                    wandb.log(
-                        {
-                            "test loss": avg_test_loss,
-                            "gap": avg_train_loss - avg_test_loss
-                         }
-                    )
+                    wandb.log({
+                        "epoch": epoch,
+                        "training loss": training_loss / len(train_loader),
+                        "test loss": avg_test_loss
+                    })
+
                 epoch_test_losses.append(avg_test_loss)
                 print(f"""
                 Epoch {epoch + 1},
                 Learning Rate: {lr_scheduler.get_last_lr()[0]:.6f},
-                Train Loss: {avg_train_loss:.4f}, 
-                Test Loss: {avg_test_loss:.4f},
-                gap: {avg_train_loss - avg_test_loss:.4f}
+                Train MAE: {training_loss:.4f}, 
+                Test MAE: {avg_test_loss:.4f},
+                gap: {training_loss - avg_test_loss:.4f}
                 """)
 
                 early_stopping(avg_test_loss, model)
                 if early_stopping.early_stop:
                     print("Early stopping triggered")
-                    torch.save(model.state_dict(),
-                               'model_checkpoint.pt')
+                    torch.save(
+                        model.state_dict(),
+                        'model_checkpoint.pth')
                     break
-            model.load_state_dict(torch.load('model_checkpoint.pt'))
+            model.load_state_dict(torch.load('model_checkpoint.pth'))
             artifact = wandb.Artifact('model_artifact', type='model')
-            artifact.add_file('model_checkpoint.pt')
+            artifact.add_file('model_checkpoint.pth')
             if CFG.logging:
-                wandb.save('model_checkpoint.pt')
+                wandb.save('model_checkpoint.pth')
 
             best_train_loss = min(epoch_train_losses)
             all_folds_train_losses.append(best_train_loss)
@@ -536,91 +602,68 @@ if __name__ == "__main__":
     # todo: wandb sweeps to optimise hyperparameters
     # todo: inference, ensemble
 
+###############################################################################
     # Inference
     else:
         CFG = LstmCFG()
-        nsw_df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
-        nsw_df.drop(
-            columns=['daily_avg_actual', 'daily_avg_forecast'],
-            inplace=True
-        )
-        # print(f'nsw_df columns: {nsw_df.shape[1]}') # number of columns in df
-
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        # define a cutoff date from the last date in df
-        cutoff_date1 = nsw_df.index.max() - pd.Timedelta(days=7)
-
-        val_df = nsw_df[nsw_df.index > cutoff_date1].copy()
-        # print(f'val_df columns: {val_df.shape[1]}')  # dubugging line
-
-        scalers = joblib.load('scalers.pkl')
 
         # initialize the model
         model = LSTMModel(
-            input_size=LstmCFG.input_size,
+            input_size=LstmCFG.input_size,  # fix_me
             hidden_layer_size=LstmCFG.hidden_units,
             output_size=LstmCFG.output_size,
             dropout=LstmCFG.dropout,
             num_layers=LstmCFG.num_layers
         )
-
-        # # load the state dictionary
-        model.load_state_dict(torch.load('model_checkpoint.pt'))
-
-        # call model.eval() to set dropout and batch normalization layers to
-        # evaluation mode before running inference.
+        model.load_state_dict(torch.load('model_checkpoint.pth'))
+        print(os.path.exists(
+            'model_checkpoint.pth'))  # Should return True if the file exists
+        print("Size of checkpoint file:",
+              os.path.getsize('model_checkpoint.pth'), "bytes")
+        model = model.to(device)
         model.eval()
 
-        # Now you can use model for inference
+        print("Number of validation samples available:", len(val_dataset))
 
-        # Encoding cyclical features for val_df
-        for col, max_val in max_values.items():
-            val_df = encode_cyclical_features(val_df, col, max_val)
+        if len(val_dataset) > 0:
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=LstmCFG.batch_size,
+                shuffle=False
+            )
+            predictions = []
+            actuals = []
+        # if len(val_df) < (LstmCFG.seq_length + 336):
+        #     print("Not enough data points for a full sequence and forecast.")
+        # else:
+        #     scalers = joblib.load('scalers.pkl')
+            with torch.no_grad():
+                # dummy_input = torch.randn(1, 336, 33).to(
+                #     device)  # Random data with the shape of your input
+                # model.eval()
+                # output = model(dummy_input)
+                # print("Dummy Output shape:", output.shape)
 
-        for original_col, normalized_col in column_mapping.items():
-            val_df.loc[:, normalized_col] = scalers[original_col].transform(
-                val_df[[original_col]])
+                for sequences, labels in val_loader:
+                    print(f"Sequences shape: {sequences.shape}, Labels shape: {labels.shape}")
+                    sequences, labels = sequences.to(device), labels.to(device)
+                    output = model(sequences)  # fix_me
+                    predictions.extend(output.cpu().numpy())
+                    actuals.extend(labels.cpu().numpy())
 
-        # Prepare the validation dataset
-        val_dataset = DemandDataset(
-            val_df[input_features + ['TOTALDEMAND']],
-            label_col=val_df['TOTALDEMAND'],
-            sequence_length=LstmCFG.seq_length
-        )
+                if predictions:
+                    predictions = scalers['TOTALDEMAND'].inverse_transform(np.array(predictions).reshape(-1, 1)).flatten()
+                    actuals = scalers['TOTALDEMAND'].inverse_transform(np.array(actuals).reshape(-1, 1)).flatten()
+                    mae = np.mean(np.abs(predictions - actuals))
+                    print(f"Mean Absolute Error (MAE): {mae:.2f}")
+                    plt.figure(figsize=(10, 5))
+                    plt.plot(predictions, label='Predicted Demand')
+                    plt.plot(actuals, label='Actual Demand')
+                    plt.title('Comparison of Predicted and Actual Electricity Demand')
+                    plt.xlabel('Time')
+                    plt.ylabel('Electricity Demand')
+                    plt.legend()
+                    plt.show()
 
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=LstmCFG.batch_size,
-            shuffle=False
-        )
-
-        predictions = []
-        actuals = []
-
-        with torch.no_grad():
-            for sequences, labels in val_loader:
-                sequences, labels = sequences.to(device), labels.to(device)
-                output = model(sequences)
-                predictions.extend(output.cpu().numpy())
-                actuals.extend(labels.cpu().numpy())
-
-        # Assuming 'total_demand' was scaled using MinMaxScaler as an example
-        predictions = scalers['TOTALDEMAND'].inverse_transform(
-            np.array(predictions).reshape(-1, 1)).flatten()
-        actuals = scalers['TOTALDEMAND'].inverse_transform(
-            np.array(actuals).reshape(-1, 1)).flatten()
-
-        # Calculate Mean Absolute Error
-        mae = np.mean(np.abs(predictions - actuals))
-        print(f"Mean Absolute Error (MAE): {mae:.2f}")
-
-        # Plotting the predictions against the actuals
-        plt.figure(figsize=(10, 5))
-        plt.plot(predictions, label='Predicted Demand')
-        plt.plot(actuals, label='Actual Demand')
-        plt.title('Comparison of Predicted and Actual Electricity Demand')
-        plt.xlabel('Time')
-        plt.ylabel('Electricity Demand')
-        plt.legend()
-        plt.show()
+                else:
+                    print("No predictions were made.")
