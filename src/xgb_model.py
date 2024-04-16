@@ -10,14 +10,100 @@ from sklearn.model_selection import ParameterGrid
 from sklearn.base import clone
 import wandb
 import matplotlib.pyplot as plt
-from config import CFG
-from xgb_functions import series_to_supervised
+import os
 
 
 pd.set_option('display.max_columns', 10)
 pd.set_option('display.max_rows', 25)
 pd.set_option('display.precision', 2)
 pd.options.display.max_colwidth = 25
+
+class CFG:
+    wandb_project_name = 'electricity_demand_forecasting'
+    wandb_run_name = 'xgboost'
+    data_path = './../data/NSW'
+    images_path = './../images/xgb'
+    logging = False  # set to True to enable W&B logging
+    img_dim1 = 20
+    img_dim2 = 10
+    n_in = 6  # 6 lag features
+    n_test = 336  # 7 days of 30-minute sample intervals
+    version = 24  # increment for each new experiment
+    sweep_count = 10  # number of sweep runs
+    params = {
+        'objective': 'reg:squarederror',
+        'gamma': 4.592513457496951,  # def 0
+        'learning_rate': 0.07984076257805875,  # def 0.1
+        'max_depth': 8,
+        'min_child_weight': 20,  # def 0.1
+        'nthread': 4,  # ?
+        'random_state': 42,
+        'reg_alpha': 0.7863437272577511,
+        'reg_lambda': 3.475149811652308,  # def 1
+        'eval_metric': ['mae'],
+        'tree_method': 'hist'
+    }
+    sweep_config = {
+        "method": "random",
+        "parameters": {
+            "learning_rate": {
+                "min": 0.001,
+                "max": 1.0
+            },
+            "gamma": {
+                "min": 0.001,
+                "max": 1.0
+            },
+            "min_child_weight": {
+                "min": 1,
+                "max": 150
+            },
+            "early_stopping_rounds": {
+                "values": [10, 20, 30, 40]
+            },
+        }
+    }
+
+
+def series_to_supervised(data, n_in=1, n_out=1, dropnan=True, target_var='TOTALDEMAND'):
+    """
+    frame a time series dataset as a supervised learning dataset, required as
+    in input for xgb
+    :param data:
+    :param n_in:
+    :param n_out:
+    :param dropnan:
+    :param target_var:
+    :return:
+    """
+    n_vars = 1 if type(data) is list else data.shape[1]
+    df = pd.DataFrame(data)
+    cols, names = list(), list()
+
+    for i in range(n_in, 0, -1):  # input sequence (t-n, ... t-1)
+        cols.append(df.drop(columns=target_var).shift(i))
+        names += [('%s(t-%d)' % (df.columns[j], i)) for j in range(n_vars) if
+                  df.columns[j] != target_var]
+
+    # forecast sequence (t+1, ... t+n_out-1), only for predictors, not target
+    for i in range(1, n_out):
+        cols.append(df.drop(columns=target_var).shift(-i))
+        names += [('%s(t+%d)' % (df.columns[j], i)) for j in range(n_vars) if
+                  df.columns[j] != target_var]
+
+    # add the target variable column at t (current timestep)
+    cols.append(df[[target_var]])
+    names.append('%s(t)' % target_var)
+
+    # combine everything
+    agg = pd.concat(cols, axis=1)
+    agg.columns = names
+
+    # drop records with NaN values
+    if dropnan:
+        agg.dropna(inplace=True)
+
+    return agg
 
 
 class WandbCallback(TrainingCallback):
@@ -123,7 +209,6 @@ def wandb_callback():
 if __name__ == "__main__":
     CFG = CFG()
 
-
     # sweep_id = wandb.sweep(CFG.sweep_config, project=CFG.wandb_project_name)
 
     config_dict = {
@@ -148,99 +233,99 @@ if __name__ == "__main__":
         )
 
     # load data
-    df = pd.read_parquet('../data/NSW/nsw_df.parquet')
+    df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
     df.drop(columns=['daily_avg_actual', 'daily_avg_forecast'], inplace=True)
-    print("DataFrame shape:", df.shape)
-    print("DataFrame head:\n", df.head())
+    # print("DataFrame shape:", df.shape)
+    # print("DataFrame head:\n", df.head())
 
-    data = series_to_supervised(df, n_in=CFG.n_in)  # prepare data
-    print("Transformed data shape:", data.shape)
+    val_end_date = df.index.max()  # most recent date
+    val_start_date = val_end_date - pd.Timedelta(days=7)
+    test_end_date = val_start_date - pd.Timedelta(minutes=30)
+    test_start_date = test_end_date - pd.Timedelta(days=7)
+
+    df_val = df[df.index > val_start_date]
+    df_test = df[(df.index > test_start_date) & (df.index <= test_end_date)]
+    df_train = df[df.index <= test_start_date]
+
+    train_supervised = series_to_supervised(df_train, n_in=CFG.n_in)
+    test_supervised = series_to_supervised(df_test, n_in=CFG.n_in)
+    val_supervised = series_to_supervised(df_val, n_in=CFG.n_in)
+    # print("Transformed data shape:", data.shape)
 
     n_obs = CFG.n_in * len(df.columns)
 
     # split into input and outputs, with the last CFG.n_test rows for testing
-    train, test = train_test_split(data.values, CFG.n_test)
-    print(f'train shape: {train.shape}')
-    print(f'test shape: {test.shape}')
-
-    trainX, trainy = train[:, :-1], train[:, -1]
-    print(f'trainX shape: {trainX.shape}')
-    print(f'trainy shape: {trainy.shape}')
-
-    testX, testy = test[:, :-1], test[:, -1]
-    print(f'testX shape: {testX.shape}')
-    print(f'testy shape: {testy.shape}')
-
-    # further split training into train & val sets
-
-    n_val = int(len(trainX) * 0.1)  # use last 10% of data as validation set
-    trainX, valX = trainX[:-n_val], trainX[-n_val:]
-    trainy, valy = trainy[:-n_val], trainy[-n_val:]
+    trainX, trainy = train_supervised.iloc[:, :-1], train_supervised.iloc[:, -1]
+    testX, testy = test_supervised.iloc[:, :-1], test_supervised.iloc[:, -1]
+    valX, valy = val_supervised.iloc[:, :-1], val_supervised.iloc[:, -1]
+    # print(f'train shape: {train.shape}')
+    # print(f'test shape: {test.shape}')
 
     # convert the datasets into xgb.DMatrix() format
-    dtrain = xgb.DMatrix(trainX, label=trainy)  # train set
-    dtest = xgb.DMatrix(testX)  # test set
-    dval = xgb.DMatrix(valX, label=valy)  # val set
+    dtrain = xgb.DMatrix(trainX, label=trainy)
+    dtest = xgb.DMatrix(testX, label=testy)
+    dval = xgb.DMatrix(valX, label=valy)
 
     # train the model
-    if CFG.logging:  # perform W&B logging if CFG.logging=True
-        # train the model with W&B callback
-        bst = xgb.train(
-            CFG.params,
-            dtrain,
-            num_boost_round=1000,
-            evals=[(dtrain, 'train'), (dval, 'eval')],
-            early_stopping_rounds=50,
-            callbacks=[WandbCallback()] if CFG.logging else []
-        )
-    else:
-        # train the model without W&B callback
-        bst = xgb.train(
-            CFG.params,
-            dtrain,
-            num_boost_round=1000,
-            evals=[(dtrain, 'train'), (dval, 'eval')],
-            early_stopping_rounds=50
-        )
+    bst = xgb.train(
+        CFG.params,
+        dtrain,
+        num_boost_round=1000,
+        evals=[(dtrain, 'train'), (dtest, 'test')],
+        early_stopping_rounds=50,
+        callbacks=[WandbCallback()] if CFG.logging else []
+    )
+    # print(testy)
 
-    print(testy)
     # evaluate model
     yhat = bst.predict(dtest)
-    print(yhat)
-    error = mean_absolute_error(testy, yhat)
+    # print(yhat)
 
-    # assuming yhat is the prediction array and testy is the actual target
-    # values from the test set
+    error = mean_absolute_error(testy, yhat)
+    # print(f'Mean Absolute Error: {error}')
+
     actual = testy
     predicted = yhat
 
-    # generate a time index for plotting.
-    # since we have 30-minute intervals, this can be represented similarly
-    # assuming the test set starts immediately after training and val
-    # sets, we can calculate the start date as follows this requires the
-    # original df to have a datetime index
-    test_start_date = df.index[-len(testy)]  # get the start date for test set
+    # evaluate model on validation set
+    val_predictions = bst.predict(dval)
+    val_error = mean_absolute_error(valy, val_predictions)
+    print(f'Validation MAE: {val_error}')
 
-    # generate a date range for the test set
-    test_dates = pd.date_range(
-        start=test_start_date,
-        periods=len(testy),
+    # log validation MAE to W&B
+    if CFG.logging:
+        wandb.log({"Validation MAE": val_error})
+
+    # plot validation predictions vs actual
+    val_dates = pd.date_range(
+        start=df_val.index[0],
+        periods=len(valy),
         freq='30min'
     )
 
-    # plotting
     plt.figure(figsize=(15, 7))
-    plt.plot(test_dates, actual, label='Actual', marker='.', linestyle='-',
-             linewidth=1.0)
-    plt.plot(test_dates, predicted, label='Predicted', marker='.',
-             linestyle='--', linewidth=1.0)
-    plt.title('Test Set: Actual vs Predicted Demand')
+    plt.plot(
+        val_dates,
+        valy,
+        label='Actual',
+        marker='.',
+        linestyle='-'
+    )
+
+    plt.plot(
+        val_dates,
+        val_predictions,
+        label='Predicted',
+        marker='.',
+        linestyle='--'
+    )
+
+    plt.title('Validation Set: Actual vs Predicted Demand')
     plt.xlabel('Date Time')
     plt.ylabel('Total Demand')
     plt.legend()
     plt.tight_layout()
-    # can focus on a smaller time frame for a more detailed view
-    # plt.xlim([pd.Timestamp('2021-XX-XX'), pd.Timestamp('2021-XX-XX')])
+    plt.savefig(os.path.join(CFG.images_path, 'xgb_val_predictions.png'))
     plt.show()
 
     # log test MAE to W&B

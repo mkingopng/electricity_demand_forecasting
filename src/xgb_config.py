@@ -10,8 +10,7 @@ class CFG:
     n_in = 6  # 6 lag features
     n_test = 336  # 7 days of 30-minute sample intervals
     wandb_project_name = 'electricity_demand_forecasting'
-    # wandb_run_name = 'xgboost'
-    wandb_run_name = 'lstm'
+    wandb_run_name = 'xgboost'
     version = 24  # increment for each new experiment
     logging = True  # set to True to enable W&B logging
     sweep_count = 10  # number of sweep runs
