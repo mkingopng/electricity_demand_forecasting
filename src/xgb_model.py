@@ -11,6 +11,7 @@ from sklearn.base import clone
 import wandb
 import matplotlib.pyplot as plt
 import os
+import shap
 
 
 pd.set_option('display.max_columns', 10)
@@ -25,10 +26,10 @@ class CFG:
     images_path = './../images/xgb'
     models_path = './../trained_models/'
     train = False
-    logging = False  # set to True to enable W&B logging
+    logging = True  # set to True to enable W&B logging
     img_dim1 = 20
     img_dim2 = 10
-    n_in = 6  # 6 lag features
+    n_in = 9  # 6 lag features
     n_test = 336  # 7 days of 30-minute sample intervals
     version = 24  # increment for each new experiment
     sweep_count = 10  # number of sweep runs
@@ -40,6 +41,7 @@ class CFG:
         'min_child_weight': 20,  # def 0.1
         'nthread': 4,  # ?
         'random_state': 42,
+        'subsample': 0.8836012456010794,
         'reg_alpha': 0.7863437272577511,
         'reg_lambda': 3.475149811652308,  # def 1
         'eval_metric': ['mae'],
@@ -232,8 +234,7 @@ if __name__ == "__main__":
     n_obs = CFG.n_in * len(df.columns)
 
     # split into input and outputs, with the last CFG.n_test rows for testing
-    trainX, trainy = train_supervised.iloc[:, :-1], train_supervised.iloc[:,
-                                                    -1]
+    trainX, trainy = train_supervised.iloc[:, :-1], train_supervised.iloc[:, -1]
     testX, testy = test_supervised.iloc[:, :-1], test_supervised.iloc[:, -1]
     valX, valy = val_supervised.iloc[:, :-1], val_supervised.iloc[:, -1]
     # print(f'train shape: {train.shape}')
@@ -244,12 +245,16 @@ if __name__ == "__main__":
     dtest = xgb.DMatrix(testX, label=testy)
     dval = xgb.DMatrix(valX, label=valy)
 
+##############################################################################
+    # train the model
+##############################################################################
+
     if CFG.train:
         CFG = CFG()
         # sweep_id = wandb.sweep(CFG.sweep_config, project=CFG.wandb_project_name)
 
         config_dict = {
-            "n_in": 6,
+            "n_in": 10,
             "n_test": 30,
             "wandb_project_name": 'electricity_demand_forecasting',
             "wandb_run_name": 'xgboost',
@@ -297,6 +302,9 @@ if __name__ == "__main__":
             run.log({"Test MAE": error})
             run.finish()
 
+##############################################################################
+    # load saved model and run inference and analysis
+##############################################################################
     else:
         bst = xgb.Booster()
         bst.load_model(os.path.join(CFG.models_path, 'xgb_model.json'))
@@ -306,9 +314,134 @@ if __name__ == "__main__":
         val_error = mean_absolute_error(valy, val_predictions)
         print(f'Validation MAE: {val_error}')
 
+        # Initialize SHAP explainer
+        explainer = shap.TreeExplainer(bst)
+        shap_values = explainer.shap_values(valX)
+
+        # create an Explanation object for the first observation in val set
+        expl = shap.Explanation(
+            values=shap_values[0],
+            base_values=explainer.expected_value,
+            data=valX.iloc[0],
+            feature_names=valX.columns
+        )
+
+        # calculate SHAP values for multiple instances in the validation set
+        shap_values_multi = explainer.shap_values(valX)
+
+        # Exclude the first variable's SHAP values and corresponding feature
+        # Exclude 'FORECAST_DEMAND(t-1)' from SHAP values and valX
+        feature_to_exclude = 'FORECASTDEMAND(t-1)'  # Adjust if the feature name is slightly different
+        feature_index = valX.columns.get_loc(
+            feature_to_exclude)  # Get the index of the feature to exclude
+
+        shap_values_excluded = np.delete(shap_values, feature_index, axis=1)  # Remove SHAP values of the feature
+        valX_excluded = valX.drop(columns=[feature_to_exclude])  # Drop the column from the DataFrame
+
+        # Prepare data for the first instance
+        shap_values_instance_excluded = shap_values_excluded[0, :]  # SHAP values for the first instance, excluded feature
+        valX_instance_excluded = valX_excluded.iloc[0, :]  # Feature data for the first instance, excluded feature
+
+        # Create an Explanation object for the waterfall plot
+        expl_excluded = shap.Explanation(
+            values=shap_values_instance_excluded,
+            base_values=explainer.expected_value,
+            data=valX_instance_excluded,
+            feature_names=valX_excluded.columns.tolist()
+        )
+
+        # prep an Explanation object with excluded data for beeswarm plot
+        expl_multi_excluded = shap.Explanation(
+            values=shap_values_excluded,
+            base_values=explainer.expected_value,
+            data=valX_excluded,
+            feature_names=valX_excluded.columns.tolist()
+        )
+
+        # Ensure that the Explanation object includes all these instances
+        expl_multi = shap.Explanation(
+            values=shap_values_multi,
+            base_values=explainer.expected_value,
+            data=valX,
+            feature_names=valX.columns
+        )
+
+        # summary plot: an overview of feature importance
+        shap.summary_plot(shap_values, valX, plot_type="bar")
+        fig = plt.gcf()
+        fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_shap_summary_plot.png'))
+        plt.close()
+
+        shap.summary_plot(shap_values_excluded, valX_excluded, plot_type="bar")
+        fig = plt.gcf()
+        fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_shap_summary_plot_excluded.png'))
+        plt.close()
+
+        # visualise how the first feature affects the output
+        shap.dependence_plot(0, shap_values, valX)
+        fig = plt.gcf()
+        fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_shap_dependence_plot_0.png'))
+        plt.close()
+
+        shap.dependence_plot(1, shap_values, valX)
+        fig = plt.gcf()
+        fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_shap_dependence_plot_1.png'))
+        plt.close()
+
+        shap.decision_plot(
+            explainer.expected_value,
+            shap_values[0, :],
+            valX.iloc[0, :]
+        )
+        fig = plt.gcf()
+        fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_shap_decision_plot.png'))
+        plt.close()
+
+        # decision plot excluding the first feature
+        shap.decision_plot(
+            explainer.expected_value,
+            shap_values_instance_excluded,
+            valX_instance_excluded
+        )
+        fig = plt.gcf()
+        fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_shap_decision_plot_no_FORECASTDEMAND.png'))
+        plt.close()
+
+        shap.waterfall_plot(expl)
+        fig = plt.gcf()
+        fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_shap_waterfall_plot.png'))
+        plt.close()
+
+        # Generate the waterfall plot for the first instance with the excluded feature
+        shap.waterfall_plot(expl_excluded)
+        fig = plt.gcf()
+        fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_shap_waterfall_plot_no_FORECASTDEMAND.png'))
+        plt.close()
+
+        shap.plots.beeswarm(expl_multi)
+        fig = plt.gcf()
+        fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_shap_beeswarm_plot.png'))
+        plt.close()
+
+        # Generate the beeswarm plot for the excluded data
+        shap.plots.beeswarm(expl_multi_excluded)
+        fig = plt.gcf()
+        fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_shap_beeswarm_plot_no_FORECASTDEMAND.png'))
+        plt.close()
+
         # log validation MAE to W&B
-        if CFG.logging:
-            wandb.log({"Validation MAE": val_error})
+        # if CFG.logging:
+        #     wandb.log({"Validation MAE": val_error})
 
         # plot validation predictions vs actual
         val_dates = pd.date_range(
@@ -339,6 +472,7 @@ if __name__ == "__main__":
         plt.ylabel('Total Demand')
         plt.legend()
         plt.tight_layout()
-        plt.savefig(os.path.join(CFG.images_path, 'xgb_val_predictions.png'))
+        # plt.savefig(os.path.join(CFG.images_path, 'xgb_val_predictions.png'))
         plt.show()
         plt.close()  # close the plot to free up memory
+'https://teams.microsoft.com/v2/'
