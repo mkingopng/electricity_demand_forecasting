@@ -1,21 +1,23 @@
 """
 
 """
-import pandas as pd
-from data_processing import (series_to_supervised, train_test_split,
-                             load_and_preprocess_data)
-from model import (train_model, initialize_wandb, train_and_evaluate_model,
-                   save_model, load_model, evaluate_model)
-from evaluation import evaluate_predictions
-from visualisation import (
+from .data_processing import (
+    series_to_supervised, train_test_split, load_and_preprocess_data
+)
+from .model import (
+    train_model, initialize_wandb, train_and_evaluate_model, save_model,
+    load_model, evaluate_model
+)
+from .visualisation import (
     plot_shap_summary, plot_dependence_plots, plot_decision_plot,
     plot_waterfall_plot, plot_beeswarm_plot, plot_actual_vs_predicted,
     initialize_shap_explainer, plot_shap_values
 )
-from config import CFG
+from .config import CFG
 import os
 
 
+# todo: correct setup as a package, add wandb logging, unit tests, exception handling
 def main():
     if CFG.train:
         # initialize W&B
@@ -98,6 +100,8 @@ def main():
         #     valX,
         #     image_name='Bee Swarm Plot.png'
         # )
+
+        # plot_waterfall_plot()
 
         # plot of actual TOTALDEMAND values vs forecast values
         dates = valX.index

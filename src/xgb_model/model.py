@@ -7,7 +7,7 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import ParameterGrid
 from sklearn.base import clone
 import wandb
-from config import CFG
+from .config import CFG
 import os
 import numpy as np
 

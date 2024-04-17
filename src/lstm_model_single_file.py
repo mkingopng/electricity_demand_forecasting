@@ -414,7 +414,7 @@ def train_model(train_df, test_df, input_features, label_col, CFG):
         early_stopping = EarlyStopping(
             patience=CFG.patience,
             verbose=True,
-            path='model_checkpoint.pth'
+            path='../trained_models/model_checkpoint.pth'
         )
 
         # Training loop for the current fold
@@ -725,7 +725,8 @@ if __name__ == "__main__":
             dropout=LstmCFG.dropout,
             num_layers=LstmCFG.num_layers
         )
-        model.load_state_dict(torch.load('model_checkpoint.pth'))
+        model.load_state_dict(torch.load(
+			'../trained_models/model_checkpoint.pth'))
         # print(os.path.exists('model_checkpoint.pth'))  # debugging line
         # print("Size of checkpoint file:", os.path.getsize('model_checkpoint.pth'), "bytes")  # debugging line
         model = model.to(device)

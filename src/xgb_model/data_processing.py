@@ -2,7 +2,7 @@
 
 """
 import pandas as pd
-from config import CFG
+from .config import CFG
 import os
 import xgboost as xgb
 

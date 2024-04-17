@@ -195,3 +195,4 @@ data/public_prices_consolidated.parquet
 /Archive/week 3 reflections.odt
 /Archive/week 4 reflections.odt
 /trained_models/trained_prophet_model.json
+/src/xgb_model/wandb/

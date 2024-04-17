@@ -3,7 +3,8 @@
 """
 from sklearn.metrics import mean_absolute_error
 import xgboost as xgb
-from config import CFG
+from .config import CFG
+
 
 def evaluate_predictions(true_values, predictions):
     """

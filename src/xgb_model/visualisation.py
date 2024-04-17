@@ -3,7 +3,7 @@
 """
 import matplotlib.pyplot as plt
 import shap
-from config import CFG
+from .config import CFG
 import os
 import xgboost as xgb
 import numpy as np
