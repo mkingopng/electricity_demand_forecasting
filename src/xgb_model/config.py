@@ -4,10 +4,10 @@
 class CFG:
     wandb_project_name = 'electricity_demand_forecasting'
     wandb_run_name = 'xgboost'
-    data_path = './../data/NSW'
-    images_path = './../images/xgb'
-    models_path = './../trained_models/'
-    train = False
+    data_path = './../../data/NSW'
+    images_path = './../../images/xgb'
+    models_path = './../../trained_models'
+    train = False  # True for train, False for inference
     logging = True  # set to True to enable W&B logging
     img_dim1 = 20
     img_dim2 = 10

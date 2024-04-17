@@ -110,4 +110,4 @@ def load_and_preprocess_data():
     dtest = xgb.DMatrix(testX, label=testy)
     dval = xgb.DMatrix(valX, label=valy)
 
-    return dtrain, dtest, dval, trainy, testy, valy
+    return dtrain, dtest, dval, trainy, testy, valy, valX
