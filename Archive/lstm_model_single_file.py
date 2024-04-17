@@ -30,9 +30,9 @@ class LstmCFG:
     """
     wandb_project_name = 'electricity_demand_forecasting'
     wandb_run_name = 'lstm'
-    data_path = './../data/NSW'
-    images_path = './../images'
-    model_path = './../trained_models'
+    data_path = '../data/NSW'
+    images_path = '../images'
+    model_path = '../trained_models'
     logging = True
     train = True
     version = 37  # increment for each training run

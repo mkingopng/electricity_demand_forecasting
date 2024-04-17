@@ -22,9 +22,9 @@ pd.options.display.max_colwidth = 25
 class CFG:
     wandb_project_name = 'electricity_demand_forecasting'
     wandb_run_name = 'xgboost'
-    data_path = './../data/NSW'
-    images_path = './../images/xgb'
-    models_path = './../trained_models/'
+    data_path = '../data/NSW'
+    images_path = '../images/xgb'
+    models_path = '../trained_models/'
     train = False
     logging = True  # set to True to enable W&B logging
     img_dim1 = 20

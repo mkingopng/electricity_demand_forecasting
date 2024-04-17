@@ -152,11 +152,11 @@ if CFG.train:
 	print(f"Overall Training MAE: {train_mae}")
 	print(f"Overall Testing MAE: {test_mae}")
 
-	with open('./../trained_models/trained_prophet_model.json', 'w') as fout:
+	with open('../trained_models/trained_prophet_model.json', 'w') as fout:
 		fout.write(model_to_json(model))  # Save model
 ############################################################################
 else:
-	with open('./../trained_models/trained_prophet_model.json') as fin:
+	with open('../trained_models/trained_prophet_model.json') as fin:
 		model = model_from_json(fin.read())  # Load model
 		# make future dataframe
 		future = df_val[[

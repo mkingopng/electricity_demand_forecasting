@@ -17,7 +17,7 @@ from .config import CFG
 import os
 
 
-# todo: correct setup as a package, add wandb logging, unit tests, exception handling
+# todo: add wandb logging, unit tests, exception handling
 def main():
     if CFG.train:
         # initialize W&B

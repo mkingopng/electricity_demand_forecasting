@@ -1,10 +1,12 @@
 """
-note: this model runs fine on cpu. unlike unstructured data, this kind of
-problem doesn't get a huge benefit from using GPU
+As this model has become more complex, GPU support has become essential to
+speed up training. It is impractical to train on CPU only. Training on GPU
+takes >3 hours with current architecture
 
-lstm model
-- 4x LSTM layers
-- bidirectional LSTM
+lstm with attention model
+- 8x bidirectional LSTM layers
+- multi head attention
+- ReLU activation function for non-linearity from attention layer
 - 50 hidden units
 - linear layer
 - Tanh activation layer
@@ -14,10 +16,12 @@ import os
 import random
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
+# from config import CFG
 from utils import normalize_columns
 from sklearn.model_selection import TimeSeriesSplit
 from tqdm import tqdm
@@ -32,28 +36,30 @@ wandb.login(key=wandb_api_key)
 
 class LstmCFG:
     """
-    Configuration class for the LSTM model
+    configuration class for the LSTM model
     """
     wandb_project_name = 'electricity_demand_forecasting'
-    wandb_run_name = 'lstm'
-    data_path = './../data/NSW'
+    wandb_run_name = 'lstm with attention'
+    data_path = '../data/NSW'
+    image_path = '../images'
+    version = 2
     logging = True
-    version = 25
+    train = True
     n_folds = 10
     epochs = 30
     n_features = 33
     input_size = 33
-    hidden_units = 50
+    num_layers = 8
+    hidden_units = 50  # change me
     output_size = 1
-    lr = 0.0002
     batch_size = 1024
     seq_length = 336  # 336 one week of 30-minute sample intervals
-    dropout = 0.2
-    num_layers = 4
-    weight_decay = 0.00001
+    dropout = 0.2  # change me
+    weight_decay = 0.00001  # change me
+    lr = 0.0002
     lrs_step_size = 6
     lrs_gamma = 0.4
-    train = True
+    num_heads = 3
 
 
 class DemandDataset(Dataset):
@@ -92,17 +98,29 @@ class DemandDataset(Dataset):
         return sequence_tensor, label_tensor
 
 
+class SelfAttention(nn.Module):
+    def __init__(self, hidden_size):
+        super(SelfAttention, self).__init__()
+        self.hidden_size = hidden_size
+        self.query = nn.Linear(hidden_size, hidden_size)
+        self.key = nn.Linear(hidden_size, hidden_size)
+        self.value = nn.Linear(hidden_size, hidden_size)
+
+    def forward(self, x):
+        Q = self.query(x)  # Queries
+        K = self.key(x)    # Keys
+        V = self.value(x)  # Values
+
+        # Calculate attention scores
+        attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / self.hidden_size**0.5
+        attention_weights = F.softmax(attention_scores, dim=-1)
+
+        # Apply attention weights to values
+        weighted_values = torch.matmul(attention_weights, V)
+        return weighted_values, attention_weights
+
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_layer_size, output_size, dropout, num_layers):
-        """
-        initialises an LSTM model with specified architecture parameters
-        :param input_size: the number of input features per time step
-        :param hidden_layer_size: the number of hidden units in the LSTM layer
-        :param output_size: the number of output vectors
-        :param dropout: the dropout rate for dropout layers to prevent
-        over-fitting
-        :param num_layers: the number of layers in the LSTM
-        """
         super(LSTMModel, self).__init__()
         self.hidden_layer_size = hidden_layer_size
         self.lstm = nn.LSTM(
@@ -112,24 +130,24 @@ class LSTMModel(nn.Module):
             batch_first=True,
             bidirectional=True)
         self.dropout = nn.Dropout(dropout)
+        self.attention = SelfAttention(hidden_layer_size*2)
         self.linear = nn.Linear(hidden_layer_size * 2, output_size)
         self.tanh = nn.Tanh()
 
     def forward(self, input_seq):
-        """
-        defines the forward pass of the model
-        :param input_seq: (Tensor) The input sequence to the LSTM model
-        :return: Tensor: the predictions made by the model
-        """
         self.lstm.flatten_parameters()
         lstm_out, _ = self.lstm(input_seq)
-        # print(f"LSTM output shape: {lstm_out.shape}")  # Debugging line
-        last_timestep_output = lstm_out[:, -1, :]
-        # print(f"Last timestep output shape: {last_timestep_output.shape}") # Debugging line
-        dropped_out = self.dropout(last_timestep_output)
-        linear_output = self.linear(dropped_out)
+        lstm_out = self.dropout(lstm_out)
+
+        # Apply self-attention
+        attention_out, attention_weights = self.attention(lstm_out)
+
+        # Optionally sum the LSTM output and attention output
+        combined_output = lstm_out + attention_out
+
+        # Apply final linear transformation and activation
+        linear_output = self.linear(combined_output)
         predictions = self.tanh(linear_output)
-        # print(f"Predictions shape: {predictions.shape}") # Debugging line
         return predictions
 
 
@@ -309,7 +327,7 @@ if __name__ == "__main__":
         columns=['daily_avg_actual', 'daily_avg_forecast'],
         inplace=True
     )
-    # print(f'nsw_df columns: {nsw_df.shape[1]}') # number of columns in df
+    print(f'nsw_df columns: {nsw_df.shape[1]}') # number of columns in df
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -319,13 +337,13 @@ if __name__ == "__main__":
 
     # split the data using cutoff date
     train_df = nsw_df[nsw_df.index <= cutoff_date2].copy()
-    # print(f'train_df columns: {train_df.shape[1]}')  # dubugging line
+    print(f'train_df columns: {train_df.shape[1]}')  # dubugging line
 
     test_df = nsw_df[(nsw_df.index > cutoff_date2) & (nsw_df.index <= cutoff_date1)].copy()
-    # print(f'nsw_df columns: {test_df.shape[1]}')  # dubugging line
+    print(f'nsw_df columns: {test_df.shape[1]}')  # dubugging line
 
     val_df = nsw_df[nsw_df.index > cutoff_date1].copy()
-    # print(f'val_df columns: {val_df.shape[1]}')  # dubugging line
+    print(f'val_df columns: {val_df.shape[1]}')  # dubugging line
 
     # normalize the training data, save scaler
     train_df, scalers = normalize_columns(
@@ -336,9 +354,9 @@ if __name__ == "__main__":
     # encode cyclical features for train and test df
     for col, max_val in max_values.items():
         train_df = encode_cyclical_features(train_df, col, max_val)
-        # print(f'encoded train_df columns: {test_df.shape[1]}')
+        print(f'encoded train_df columns: {test_df.shape[1]}')  # debugging line
         test_df = encode_cyclical_features(test_df, col, max_val)
-        # print(f'encoded test_df columns: {test_df.shape[1]}')
+        print(f'encoded test_df columns: {test_df.shape[1]}')  # debugging line
 
     # apply the saved scalers to the test data without fitting
     for original_col, normalized_col in column_mapping.items():
@@ -347,7 +365,7 @@ if __name__ == "__main__":
     label_col = 'normalised_total_demand'
 
     input_size = len(input_features)
-    # print(f'input size: {input_size}')
+    print(f'input size: {input_size}')  # debugging line
 
     train_dataset = DemandDataset(
         train_df[input_features + [label_col]],
@@ -362,7 +380,7 @@ if __name__ == "__main__":
     all_folds_train_losses = []
 
     for fold, (train_index, val_index) in enumerate(tscv.split(train_df)):
-        # print(f"Fold {fold + 1}/{LstmCFG.n_folds}")  # dubugging line
+        print(f"Fold {fold + 1}/{LstmCFG.n_folds}")  # dubugging line
         epoch_train_losses = []
         epoch_test_losses = []
 
@@ -372,14 +390,14 @@ if __name__ == "__main__":
             label_col=label_col,
             sequence_length=LstmCFG.seq_length
         )
-        # print(f"train sequences: {len(train_sequences)}")  # dubugging line
+        print(f"train sequences: {len(train_sequences)}")  # dubugging line
 
         test_sequences = DemandDataset(
             df=train_df.iloc[val_index],
             label_col=label_col,
             sequence_length=LstmCFG.seq_length
         )
-        # print(f"test sequences: {len(test_sequences)}")  # dubugging line
+        print(f"test sequences: {len(test_sequences)}")  # dubugging line
 
         # train loader
         train_loader = DataLoader(
@@ -387,7 +405,7 @@ if __name__ == "__main__":
             batch_size=LstmCFG.batch_size,
             shuffle=False
         )
-        # print(f"train loader: {len(train_loader)}")  # dubugging line
+        print(f"train loader: {len(train_loader)}")  # dubugging line
 
         # test loader
         test_loader = DataLoader(
@@ -395,7 +413,7 @@ if __name__ == "__main__":
             batch_size=LstmCFG.batch_size,
             shuffle=False
         )
-        # print(f"test loader: {len(test_loader)}")  # dubugging line
+        print(f"test loader: {len(test_loader)}")  # dubugging line
 
         # re-initialise model and optimiser at start of each fold
         model = LSTMModel(
@@ -403,14 +421,17 @@ if __name__ == "__main__":
             hidden_layer_size=LstmCFG.hidden_units,
             output_size=LstmCFG.output_size,
             dropout=LstmCFG.dropout,
-            num_layers=LstmCFG.num_layers
+            num_layers=LstmCFG.num_layers,
         ).to(device)
+        input_tensor = torch.randn(32, 100, 10, device=device)  # Batch size of 32, sequence length of 100, feature size of 10
+        output, attention_weights = model(input_tensor)
 
         # optimiser
         optimizer = optim.Adam(
             model.parameters(),
             lr=LstmCFG.lr,
-            weight_decay=LstmCFG.weight_decay
+            weight_decay=LstmCFG.weight_decay,
+            amsgrad=True
         )
 
         # learning rate scheduler
@@ -427,7 +448,7 @@ if __name__ == "__main__":
         early_stopping = EarlyStopping(
             patience=10,
             verbose=True,
-            path='../trained_models/model_checkpoint.pt'
+            path='model_checkpoint_1.pt'
         )
 
         # training loop for the current fold
@@ -440,14 +461,17 @@ if __name__ == "__main__":
             model.train()
             for sequences, labels in tqdm(train_loader, desc=f"Training Epoch {epoch + 1}"):
                 sequences, labels = sequences.to(device), labels.to(device)
+                print(f"Input sequence shape: {sequences.shape}")  # dubugging line
+                print(f"Label shape: {labels.shape}")  # dubugging line
                 optimizer.zero_grad()
-                # print(f"Input sequence shape: {sequences.shape}")  # dubugging line
-                y_pred = model(sequences)
-                loss = loss_function(y_pred, labels)
+                output, _ = model(sequences)
+                print(f"Output shape: {output.shape}")
+                loss = loss_function(output, labels)
                 loss.backward()
                 optimizer.step()
                 total_train_loss += loss.item()
                 num_train_batches += 1
+
             lr_scheduler.step()
             if CFG.logging:
                 wandb.log({"learning_rate": lr_scheduler.get_last_lr()[0]})
@@ -463,9 +487,11 @@ if __name__ == "__main__":
             with torch.no_grad():
                 for sequences, labels in tqdm(test_loader, desc=f"Test Epoch {epoch + 1}"):
                     sequences, labels = sequences.to(device), labels.to(device)
-                    y_pred = model(sequences)
-                    total_test_loss += loss_function(y_pred, labels).item()
+                    output, _ = model(sequences)
+                    test_loss = loss_function(output, labels)
+                    total_test_loss += test_loss.item()
                     num_test_batches += 1
+
             avg_test_loss = total_test_loss / num_test_batches
 
             if CFG.logging:
@@ -487,11 +513,9 @@ if __name__ == "__main__":
             early_stopping(avg_test_loss, model)
             if early_stopping.early_stop:
                 print("Early stopping triggered")
-                torch.save(model.state_dict(),
-                           '../trained_models/model_checkpoint.pt')
+                torch.save(model.state_dict(), 'model_checkpoint.pt')
                 break
-        model.load_state_dict(torch.load(
-            '../trained_models/model_checkpoint.pt'))
+        model.load_state_dict(torch.load('model_checkpoint.pt'))
         artifact = wandb.Artifact('model_artifact', type='model')
         artifact.add_file('model_checkpoint.pt')
         if CFG.logging:
