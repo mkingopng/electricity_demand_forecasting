@@ -53,3 +53,8 @@
   collection and preprocessing?
 - Consistent fonts
 - Individual reflections
+
+# To do for report
+- Results graphs comparing the different models
+- table with summary of results for each model
+- other opportunities for improvements
