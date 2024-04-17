@@ -248,7 +248,6 @@ if __name__ == "__main__":
 ##############################################################################
     # train the model
 ##############################################################################
-
     if CFG.train:
         CFG = CFG()
         # sweep_id = wandb.sweep(CFG.sweep_config, project=CFG.wandb_project_name)
@@ -475,4 +474,3 @@ if __name__ == "__main__":
         # plt.savefig(os.path.join(CFG.images_path, 'xgb_val_predictions.png'))
         plt.show()
         plt.close()  # close the plot to free up memory
-'https://teams.microsoft.com/v2/'
