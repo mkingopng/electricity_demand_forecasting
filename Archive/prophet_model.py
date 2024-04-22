@@ -67,6 +67,7 @@ df_test = df[(df['ds'] > cutoff_date2) & (df['ds'] <= cutoff_date)]
 df_val = df[df['ds'] > cutoff_date]
 
 # print(df.head())
+##############################################################################
 
 # initial plot of the data
 plt.figure(figsize=(15, 10))
