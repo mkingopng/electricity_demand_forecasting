@@ -24,7 +24,8 @@ class CFG:
 	wandb_run_name = 'prophet'
 	data_path = '../data/NSW'
 	image_path = '../images'
-	train = True
+	trained_models = '../trained_models'
+	train = False
 
 
 wandb.init(
@@ -34,6 +35,8 @@ wandb.init(
 
 # load and prep data
 df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
+
+# reset index to make subsequent changes
 df.reset_index(inplace=True)
 
 # prophet has some eccentricities for naming features
@@ -48,8 +51,10 @@ df['ds'] = pd.to_datetime(df['ds'])
 # print(df['TEMPERATURE'].isna().sum())  # debugging line
 
 # train - test - validation split
-# calculate the cut-off date for the last 7 days
+# calculate the cut-off date for the last 7 days (val_df)
 cutoff_date = df['ds'].max() - pd.Timedelta(days=7)
+
+# calculate the cut-off date for the last 14 days (test_df)
 cutoff_date2 = df['ds'].max() - pd.Timedelta(days=14)
 
 # create training df by slicing data at the cut-off date
@@ -73,9 +78,13 @@ plt.legend()
 plt.savefig(os.path.join(CFG.image_path, 'total_demand_over_time.png'))
 plt.show()
 
-if CFG.train:
+##############################################################################
+
+if CFG.train:  # if script is in training mode
 	# initialise the model
 	model = Prophet(weekly_seasonality=False)
+
+	# add regressors
 	model.add_regressor('TEMPERATURE')
 	model.add_regressor('FORECASTDEMAND')
 	model.add_regressor('rrp')
@@ -93,29 +102,29 @@ if CFG.train:
 	# add daily seasonality
 	model.add_seasonality(
 		name='daily',
-		period=48,
-		fourier_order=6
+		period=48,  # 48 x 30 minute samples per day
+		fourier_order=6  # selected based on sweeps
 	)
 
 	# add weekly seasonality
 	model.add_seasonality(
 		name='weekly',
-		period=336,
-		fourier_order=3
+		period=336,  # 7 days of 30 minute sample periods
+		fourier_order=3  # selected based on sweeps
 	)
 
 	# add monthly seasonality (approximately 30.5 days in a month)
 	model.add_seasonality(
 		name='monthly',
 		period=1464,
-		fourier_order=5
+		fourier_order=5  # selected based on sweeps
 	)
 
 	# quarterly seasonality
 	model.add_seasonality(
 		name='quarterly',
 		period=4380,
-		fourier_order=3
+		fourier_order=3  # selected based on sweeps
 	)
 
 	# add country holidays
@@ -123,8 +132,7 @@ if CFG.train:
 
 	model.fit(df_train)
 
-
-
+	# cross validation
 	df_cv = cross_validation(
 		model,
 		initial='8762 hours',  # 365 days
@@ -132,6 +140,7 @@ if CFG.train:
 		horizon='168 hours'  # 7 days
 	)
 
+	# prediction and performance metrics
 	train_forecast = model.predict(df_train)
 	train_mae = mean_absolute_error(df_train['y'], train_forecast['yhat'])
 	print(f"Training MAE: {train_mae}")
@@ -155,8 +164,8 @@ if CFG.train:
 	with open('../trained_models/trained_prophet_model.json', 'w') as fout:
 		fout.write(model_to_json(model))  # Save model
 ############################################################################
-else:
-	with open('../trained_models/trained_prophet_model.json') as fin:
+else:  # if script is in prediction mode
+	with open(os.path.join(CFG.trained_models, 'trained_prophet_model.json')) as fin:
 		model = model_from_json(fin.read())  # Load model
 		# make future dataframe
 		future = df_val[[
@@ -178,7 +187,14 @@ else:
 
 	# forecast
 	forecast = model.predict(future)
-	print(forecast.head())
+	print(forecast['yhat'])
+	print(df_val['ds'], df_val['y'])
+
+	# save actual and forecast values to a new dataframe
+	new_df = pd.merge(df_val[['ds', 'y']], forecast[['ds', 'yhat']], on='ds')
+	new_df.to_csv(os.path.join(CFG.data_path, 'prophet_forecasts.csv'))
+
+	print(new_df.head())
 
 	# plot change points
 	fig1 = model.plot(forecast)

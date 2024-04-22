@@ -65,4 +65,3 @@ members.
    ```bash
    poetry update
    ```
-

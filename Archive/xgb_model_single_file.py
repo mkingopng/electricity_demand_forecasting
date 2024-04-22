@@ -308,12 +308,14 @@ if __name__ == "__main__":
         bst = xgb.Booster()
         bst.load_model(os.path.join(CFG.models_path, 'xgb_model.json'))
 
-        # evaluate model on validation set
+        # make predictions
         val_predictions = bst.predict(dval)
+
+        # evaluate model on validation set
         val_error = mean_absolute_error(valy, val_predictions)
         print(f'Validation MAE: {val_error}')
 
-        # Initialize SHAP explainer
+        # initialize SHAP explainer
         explainer = shap.TreeExplainer(bst)
         shap_values = explainer.shap_values(valX)
 
@@ -474,3 +476,13 @@ if __name__ == "__main__":
         # plt.savefig(os.path.join(CFG.images_path, 'xgb_val_predictions.png'))
         plt.show()
         plt.close()  # close the plot to free up memory
+
+        # create a df with val_dates as the index
+        # result_df = pd.DataFrame({
+        #     'Actual': valy,  # actual values
+        #     'Predicted': val_predictions  # model predictions
+        # }, index=val_dates)
+        #
+        # print(result_df.head())
+        #
+        # result_df.to_csv(os.path.join(CFG.data_path, 'xgb_predictions.csv'))

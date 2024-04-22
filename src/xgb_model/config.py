@@ -1,6 +1,8 @@
 """
 
 """
+
+
 class CFG:
     wandb_project_name = 'electricity_demand_forecasting'
     wandb_run_name = 'xgboost'

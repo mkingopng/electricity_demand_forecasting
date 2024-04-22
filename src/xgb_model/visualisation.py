@@ -33,7 +33,7 @@ def create_explanation_objects(explainer, X, shap_values, feature_to_exclude=Non
         return shap_values, X  # Return original SHAP values and DataFrame
 
 
-def create_explanation_object(explainer, X, feature_to_exclude=None):
+def create_explanation_object(explainer, X, feature_to_exclude='FORECAST_DEMAND(t-1)'):
     """
     Generate SHAP Explanation objects, possibly excluding specific features.
     """
@@ -67,14 +67,54 @@ def create_explanation_object(explainer, X, feature_to_exclude=None):
     return explanation
 
 
-def plot_shap_summary(explainer, X, image_name, excluded=False):
+def plot_shap_summary(explainer, X, image_name, instance_index=0):
     """
-    Generate and save SHAP summary plots.
+    Generate and save SHAP summary plots, excluding the feature with the highest absolute SHAP value.
+    Handles both DataFrame and numpy array inputs for X with appropriate feature name handling.
     """
+    # Calculate SHAP values for all features
     shap_values = explainer.shap_values(X)
-    shap.summary_plot(shap_values, X, plot_type="bar")
-    plt.savefig(os.path.join(CFG.images_path, image_name))
+
+    if isinstance(X, pd.DataFrame):
+        feature_names = X.columns.tolist()
+    else:  # Assuming X is a numpy array if not a DataFrame
+        feature_names = [f"Feature {i}" for i in range(X.shape[1])]
+
+    # Determine the index of the feature with the highest absolute SHAP value for the specified instance
+    max_shap_value_index = np.argmax(np.abs(shap_values[instance_index]))
+
+    # Delete the SHAP values for the highest impact feature
+    if isinstance(shap_values, list):  # Handle multi-output models
+        shap_values = [np.delete(sv, max_shap_value_index, axis=1) for sv in
+                       shap_values]
+    else:
+        shap_values = np.delete(shap_values, max_shap_value_index, axis=1)
+
+    # Drop the feature from the data and update feature names
+    if isinstance(X, pd.DataFrame):
+        X_modified = X.drop(columns=[feature_names[max_shap_value_index]])
+        feature_names_modified = [name for i, name in enumerate(feature_names)
+                                  if i != max_shap_value_index]
+    else:
+        X_modified = np.delete(X, max_shap_value_index, axis=1)
+        feature_names_modified = [name for i, name in enumerate(feature_names)
+                                  if i != max_shap_value_index]
+
+    # Prepare the figure with the specified figure size
+    plt.figure(figsize=(30, 10))
+
+    # Generate SHAP summary plot without the highest impact feature
+    shap.summary_plot(shap_values, X_modified,
+                      feature_names=feature_names_modified, plot_type="bar",
+                      show=False)
+
+    # Save the plot to the specified file
+    plt.savefig(os.path.join(CFG.images_path, image_name), bbox_inches='tight')
     plt.close()
+
+
+# Example of using the function
+# plot_shap_summary(explainer, your_numpy_array, 'shap_summary.png')
 
 
 def plot_dependence_plots(explainer, X, feature_index, image_name):
@@ -101,18 +141,41 @@ def plot_decision_plot(explainer, X, shap_values, image_name, instance_index=0):
     plt.close()
 
 
-def plot_waterfall_plot(explainer, X, image_name, instance_index=0):
+def plot_waterfall_plot(explainer, X, image_name, instance_index=0, figsize=(12, 8)):
     """
-    Generate and save SHAP waterfall plots.
+    Generate and save SHAP waterfall plots, excluding the feature with the highest absolute SHAP value.
     """
+    # Compute SHAP values
     shap_values = explainer.shap_values(X)
+    feature_names = X.columns.tolist()
+
+    # Determine the index of the feature with the highest absolute SHAP value for the specified instance
+    max_shap_value_index = np.argmax(np.abs(shap_values[instance_index]))
+
+    # Delete the SHAP values for the highest impact feature
+    shap_values_modified = np.delete(shap_values, max_shap_value_index, axis=1)
+
+    # Drop the feature from the data
+    X_modified = X.drop(columns=[feature_names[max_shap_value_index]])
+
+    # Remove the feature from the list of feature names
+    feature_names_modified = [name for i, name in enumerate(feature_names) if i != max_shap_value_index]
+
+    # Prepare the figure with the specified figure size
+    plt.figure(figsize=(30, 10))
+
+    # Create the SHAP explanation object without the highest impact feature
     expl = shap.Explanation(
-        values=shap_values[instance_index],
+        values=shap_values_modified[instance_index],
         base_values=explainer.expected_value,
-        data=X.iloc[instance_index],
-        feature_names=X.columns
+        data=X_modified.iloc[instance_index],
+        feature_names=feature_names_modified
     )
+
+    # Generate and save the plot
     shap.waterfall_plot(expl)
+    plt.subplots_adjust(left=1)
+    plt.tight_layout()
     plt.savefig(os.path.join(CFG.images_path, image_name))
     plt.close()
 
