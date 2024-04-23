@@ -109,7 +109,7 @@ class NSWDataProcessor:
 
 
 if __name__ == "__main__":
-    data_processor = NSWDataProcessor('./../data/NSW')
+    data_processor = NSWDataProcessor('../data/NSW')
     processed_df = data_processor.process()  # store returned df as var
 
     # select a subset of columns
