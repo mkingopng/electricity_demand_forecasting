@@ -1,10 +1,10 @@
 """
-
+main.py
 """
-from config import CFG
-from dataloader import DataLoader
-from model import ProphetModel
-from visualisation import Visualization
+from .config import CFG
+from .dataloader import DataLoader
+from .model import ProphetModel
+from .visualisation import Visualization
 import wandb
 import pandas as pd
 import os
@@ -36,10 +36,11 @@ def main():
         forecast = model.predict(df_val)
         val_mae = model.evaluate(df_val, forecast)
         print(f"Validation MAE: {val_mae}")
-
+        visualiser.plot_cross_validation_metric(df_cv)
+        visualiser.plot_forecast_vs_actual(forecast, df_val)
+        visualiser.plot_components(model.model, forecast)
     else:
         model.load_model()
-
         # prepare the features for prediction
         future = df_val[[
             'ds', 'TEMPERATURE', 'FORECASTDEMAND', 'rrp',
@@ -49,6 +50,10 @@ def main():
         forecast = model.predict(future)
         print(forecast['yhat'])
         print(df_val['ds'], df_val['y'])
+
+        visualiser.plot_change_points(model.model, forecast)
+        visualiser.plot_forecast_vs_actual(forecast, df_val)
+        visualiser.plot_components(model.model, forecast)
 
         # save actual and forecast values to a new dataframe
         new_df = pd.merge(df_val[['ds', 'y']], forecast[['ds', 'yhat']], on='ds')
@@ -60,14 +65,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-    config = CFG()
-    data_loader = DataLoader(config)
-    model = ProphetModel(config)
-    visualiser = Visualization(config)
-
-    if not CFG.train:
-        visualiser.plot_change_points(model.model, forecast)
-        visualiser.plot_forecast_vs_actual(forecast, df_val)
-        visualiser.plot_components(model.model, forecast)
 
 

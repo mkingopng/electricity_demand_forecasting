@@ -1,8 +1,8 @@
 """
-
+model component for Prophet model
 """
 from prophet import Prophet
-from prophet.diagnostics import cross_validation, performance_metrics
+from prophet.diagnostics import cross_validation
 from sklearn.metrics import mean_absolute_error
 import os
 from prophet.serialize import model_to_json, model_from_json
@@ -10,13 +10,16 @@ import wandb
 
 
 class ProphetModel:
+    """
+    Prophet model class
+    """
     def __init__(self, config):
         self.config = config
         self.model = None
 
     def initialize_model(self):
         """
-        asdf
+        initialize the prophet model
         """
         self.model = Prophet(weekly_seasonality=False)
         # add all regressors
@@ -39,16 +42,16 @@ class ProphetModel:
 
     def train(self, df_train, df_test):
         """
-        asdf
+        train the model
         """
         self.initialize_model()
         self.model.fit(df_train)
-        df_cv = self.cross_validate(df_test)  # cross-validate using the test set
+        df_cv = self.cross_validate(df_test)  # cross-validate using test set
         return df_cv
 
     def cross_validate(self):
         """
-        Perform cross-validation
+        perform cross-validation
         """
         df_cv = cross_validation(
             self.model,
@@ -64,14 +67,14 @@ class ProphetModel:
 
     def predict(self, df_val):
         """
-        asdf
+        make predictions
         """
         forecast = self.model.predict(df_val)
         return forecast
 
     def evaluate(self, df_val, forecast):
         """
-        asdf
+        evaluate the model using MAE
         """
         val_mae = mean_absolute_error(df_val['y'], forecast['yhat'])
         wandb.log({'Validation MAE': val_mae})
@@ -79,7 +82,7 @@ class ProphetModel:
 
     def save_model(self):
         """
-        asdf
+        save the trained model
         """
         with open(os.path.join(self.config.trained_models, 'trained_prophet_model_1.json'), 'w') as fout:
             fout.write(model_to_json(self.model))
