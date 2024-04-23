@@ -19,52 +19,21 @@ def initialize_shap_explainer(model, X):
     return explainer, shap_values
 
 
-def create_explanation_objects(explainer, X, shap_values, feature_to_exclude=None):
+def prepare_shap_explanations(model, X):
     """
-    create SHAP Explanation objects for individual and multiple observations
+    Prepare SHAP values and explanation objects.
     """
-    shap_values = explainer.shap_values(X)
-    if feature_to_exclude and feature_to_exclude in X.columns:
-        feature_index = X.columns.get_loc(feature_to_exclude)
-        shap_values_excluded = np.delete(shap_values, feature_index, axis=1)
-        X_excluded = X.drop(columns=[feature_to_exclude])
-        return X_excluded, shap_values_excluded
-    else:
-        return shap_values, X  # Return original SHAP values and DataFrame
-
-
-def create_explanation_object(explainer, X, feature_to_exclude='FORECAST_DEMAND(t-1)'):
-    """
-    Generate SHAP Explanation objects, possibly excluding specific features.
-    """
-    # make sure X is in the correct format
-    if not isinstance(X, pd.DataFrame):
-        raise ValueError("X must be a pandas DataFrame.")
-
-    print("Shape of X before SHAP calculation:", X.shape)
-
-    # this should not convert X if it's already a df
+    explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(X)
 
-    if feature_to_exclude and feature_to_exclude in X.columns:
-        feature_index = X.columns.get_loc(feature_to_exclude)
-        shap_values_excluded = np.delete(shap_values, feature_index, axis=1)
-        X_excluded = X.drop(columns=[feature_to_exclude])
-        explanation = shap.Explanation(
-            values=shap_values_excluded,
-            base_values=explainer.expected_value,
-            data=X_excluded,
-            feature_names=X_excluded.columns.tolist()
-        )
-    else:
-        explanation = shap.Explanation(
-            values=shap_values,
-            base_values=explainer.expected_value,
-            data=X,
-            feature_names=X.columns.tolist()
-        )
-
-    return explanation
+    # Prepare the SHAP Explanation object for the full dataset
+    explanation = shap.Explanation(
+        values=shap_values,
+        base_values=explainer.expected_value,
+        data=X,
+        feature_names=X.columns.tolist()
+    )
+    return explainer, explanation
 
 
 def plot_shap_summary(explainer, X, image_name, instance_index=0):
@@ -113,10 +82,6 @@ def plot_shap_summary(explainer, X, image_name, instance_index=0):
     plt.close()
 
 
-# Example of using the function
-# plot_shap_summary(explainer, your_numpy_array, 'shap_summary.png')
-
-
 def plot_dependence_plots(explainer, X, feature_index, image_name):
     """
     Generate and save SHAP dependence plots for specific features.
@@ -131,69 +96,39 @@ def plot_decision_plot(explainer, X, shap_values, image_name, instance_index=0):
     """
     Generate and save SHAP decision plots for a specific instance.
     """
-    # SHAP values for the specific instance
     shap_values_instance = shap_values[instance_index, :]
-    # feature data for the specific instance
     feature_data_instance = X.iloc[instance_index, :]
-    # create the decision plot using SHAP values for specific instance
-    shap.decision_plot(explainer.expected_value, shap_values_instance, feature_data_instance)
+
+    shap.decision_plot(explainer.expected_value, shap_values_instance, feature_data_instance, feature_names=X.columns.tolist())
     plt.savefig(os.path.join(CFG.images_path, image_name))
     plt.close()
 
 
-def plot_waterfall_plot(explainer, X, image_name, instance_index=0, figsize=(12, 8)):
+def plot_beeswarm_plot(explanation, image_name):
     """
-    Generate and save SHAP waterfall plots, excluding the feature with the highest absolute SHAP value.
+    Generate and save SHAP beeswarm plots using an SHAP Explanation object.
     """
-    # Compute SHAP values
-    shap_values = explainer.shap_values(X)
-    feature_names = X.columns.tolist()
-
-    # Determine the index of the feature with the highest absolute SHAP value for the specified instance
-    max_shap_value_index = np.argmax(np.abs(shap_values[instance_index]))
-
-    # Delete the SHAP values for the highest impact feature
-    shap_values_modified = np.delete(shap_values, max_shap_value_index, axis=1)
-
-    # Drop the feature from the data
-    X_modified = X.drop(columns=[feature_names[max_shap_value_index]])
-
-    # Remove the feature from the list of feature names
-    feature_names_modified = [name for i, name in enumerate(feature_names) if i != max_shap_value_index]
-
-    # Prepare the figure with the specified figure size
-    plt.figure(figsize=(30, 10))
-
-    # Create the SHAP explanation object without the highest impact feature
-    expl = shap.Explanation(
-        values=shap_values_modified[instance_index],
-        base_values=explainer.expected_value,
-        data=X_modified.iloc[instance_index],
-        feature_names=feature_names_modified
-    )
-
-    # Generate and save the plot
-    shap.waterfall_plot(expl)
-    plt.subplots_adjust(left=1)
-    plt.tight_layout()
-    plt.savefig(os.path.join(CFG.images_path, image_name))
-    plt.close()
-
-
-def plot_beeswarm_plot(explainer, X, image_name):
-    """
-    Generate and save SHAP beeswarm plots.
-    """
-    # Ensure that X is a DataFrame and has the correct format
-    if not isinstance(X, pd.DataFrame):
-        raise ValueError("X must be a pandas DataFrame.")
-
-    # Print the shape of X for debugging
-    print("Shape of X at the start of plot_beeswarm_plot:", X.shape)
-
-    shap_values = explainer.shap_values(X)
-    explanation = create_explanation_object(explainer, X, shap_values)
     shap.plots.beeswarm(explanation)
+    fig = plt.gcf()
+    # fig.set_size_inches(CFG.img_dim1, CFG.img_dim2)
+    # plt.savefig(os.path.join(CFG.images_path, image_name))
+    plt.close()
+
+
+def plot_waterfall_plot(explanation, image_name, figsize=(12, 8)):
+    """
+    Generate and save SHAP waterfall plots using a prepared SHAP Explanation object.
+
+    Parameters:
+    explanation (shap.Explanation): SHAP Explanation object for the instance to be plotted.
+    image_name (str): The filename where the plot should be saved.
+    figsize (tuple): Figure size for the plot.
+    """
+    # generate the waterfall plot
+    shap.plots.waterfall(explanation)
+
+    # adjust the layout and save the plot
+    plt.tight_layout()
     plt.savefig(os.path.join(CFG.images_path, image_name))
     plt.close()
 
@@ -228,7 +163,18 @@ def plot_shap_values(explainer, X, image_name, feature_to_exclude=None):
     """
     Plot various SHAP visualizations, handling optional exclusion of a feature.
     """
-    shap_values, X_adjusted = create_explanation_objects(explainer, X, feature_to_exclude)
-    shap.summary_plot(shap_values, X_adjusted, plot_type="bar")
+    # Calculate SHAP values directly using the passed explainer
+    shap_values = explainer.shap_values(X)
+
+    # Optionally exclude a feature
+    if feature_to_exclude:
+        feature_index = X.columns.get_loc(feature_to_exclude)
+        shap_values = np.delete(shap_values, feature_index, axis=1)
+        X = X.drop(columns=[feature_to_exclude])
+
+    # Plot SHAP values
+    shap.summary_plot(shap_values, X, plot_type="bar")
+
+    # Save the plot
     plt.savefig(os.path.join(CFG.images_path, image_name))
     plt.close()

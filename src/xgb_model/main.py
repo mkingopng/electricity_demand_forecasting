@@ -11,7 +11,8 @@ from .model import (
 from .visualisation import (
     plot_shap_summary, plot_dependence_plots, plot_decision_plot,
     plot_waterfall_plot, plot_beeswarm_plot, plot_actual_vs_predicted,
-    initialize_shap_explainer, plot_shap_values
+    initialize_shap_explainer, plot_shap_values, prepare_shap_explanations,
+    plot_feature_importance
 )
 from .config import CFG
 import os
@@ -52,80 +53,18 @@ def main():
 
         return model, dval, valy, valX, val_predictions
 
-        # todo: plots
-        # explainer, shap_values = initialize_shap_explainer(model, dval)
-        # print("Shape of valX before plotting:", valX.shape)
-
-        # shap summary plot
-        # plot_shap_summary(
-        #     explainer,
-        #     shap_values,
-        #     image_name='SHAP summary.png'
-        # )
-
-        # dependence plots for feature 1
-        # plot_dependence_plots(
-        #     explainer,
-        #     shap_values,
-        #     feature_index=0,
-        #     image_name="dependence_plot_feature_0.png"
-        # )
-
-        # dependence plots for feature 2
-        # plot_dependence_plots(
-        #     explainer,
-        #     shap_values,
-        #     feature_index=1,
-        #     image_name='dependence_plot_feature_1.png'
-        # )
-
-        #
-        # plot_decision_plot(
-        #     explainer,
-        #     valX,
-        #     shap_values,
-        #     instance_index=0,
-        #     image_name='decision plot.png'
-        # )
-
-        #
-        # plot_shap_values(
-        #     explainer,
-        #     valX,
-        #     feature_to_exclude='FORECAST_DEMAND(t-1)',
-        #     image_name='SHAP values excluding feature 0.png'
-        # )
-
-        #
-        # plot_beeswarm_plot(
-        #     explainer,
-        #     valX,
-        #     image_name='Bee Swarm Plot.png'
-        # )
-
-        # plot_waterfall_plot()
-
-        # plot of actual TOTALDEMAND values vs forecast values
-        # dates = valX.index
-        # plot_actual_vs_predicted(
-        #     dates,
-        #     valy,
-        #     val_predictions,
-        #     'validation_actual_vs_predicted.png'
-        # )
-        # plot_waterfall_plot(explainer, valX[:1], image_name='Waterfall Plot.png')
-
 
 if __name__ == "__main__":
     model, dval, valy, valX, val_predictions = main()
     if not CFG.train:
         explainer, shap_values = initialize_shap_explainer(model, dval)
+        explainer, explanation = prepare_shap_explanations(model, valX)
 
         plot_shap_summary(
             explainer,
             shap_values,
             'SHAP summary.png'
-        )
+        )  # fix_me: this doesn't appear
 
         plot_dependence_plots(
             explainer,
@@ -135,27 +74,21 @@ if __name__ == "__main__":
         )
 
         plot_dependence_plots(
-            explainer, shap_values,
+            explainer,
+            shap_values,
             1,
             'dependence_plot_feature_1.png'
         )
 
         plot_decision_plot(
             explainer,
-            valX, shap_values,
-            0,
+            valX,
+            shap_values,
             'decision plot.png'
         )
 
-        plot_beeswarm_plot(
-            explainer,
-            valX,
-            'Bee Swarm Plot.png'
-        )
-
         plot_waterfall_plot(
-            explainer,
-            valX[:1],
+            explanation[1],
             'Waterfall Plot.png'
         )
 
@@ -165,4 +98,20 @@ if __name__ == "__main__":
             valy,
             val_predictions,
             'validation_actual_vs_predicted.png'
+        )
+
+        plot_beeswarm_plot(
+            explanation,
+            image_name='Bee Swarm Plot.png'
+        )
+
+        plot_feature_importance(
+            model,
+            'Feature Importance.png'
+        )  # fix_me
+
+        plot_shap_values(
+            explainer,
+            shap_values,
+            'SHAP Values.png'
         )
