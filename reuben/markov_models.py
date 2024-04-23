@@ -4,7 +4,6 @@ from sys import path
 path.append("..")
 from src.utils import *
 from plot_settings import *
-from markov_funcs import *
 from hmmlearn import hmm
 import warnings
 warnings.filterwarnings('ignore')
