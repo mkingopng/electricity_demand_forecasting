@@ -9,7 +9,7 @@ from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
 from sys import path
 path.append("..")
-from reuben.plot_settings import *
+from markov_models.plot_settings import *
 
 
 def csv_to_parquet(csv_folder, parquet_folder):
