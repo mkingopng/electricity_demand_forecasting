@@ -3,6 +3,7 @@ import numpy as np
 import statsmodels.api as sm
 import os
 import pykalman
+import plotly as px
 # import statsmodels.graphics.tsaplots as tsa
 import matplotlib.pyplot as plt
 from sklearn.neighbors import LocalOutlierFactor
@@ -91,6 +92,87 @@ def csv_to_parquet(csv_folder, parquet_folder):
             index=True if specs.get('index_col') is not None else False
         )
         print(f"Converted {csv_file} to parquet format.")
+
+
+def temperature_plot(
+        df, var_name='TEMPERATURE', roll=1, highlight=['2012', '2013'],
+        title='', size=(10, 6)
+        ):
+    """
+    Plots the temperature data with optional rolling average and highlight of
+    a specific period
+    """
+    # Main Scatter Plot
+    plt.figure(figsize=size)
+    sns.set_style("dark")
+    plt.grid()
+    ax = sns.lineplot(x=df.index,
+                      y=var_name,
+                      # hue = hue,
+                      data=df,
+                      label=var_name)
+    ax.axes.set_title("Title", fontsize=16)
+    ax.set_xlabel("X Label", fontsize=12)
+    ax.set_ylabel("Y Label", fontsize=12)
+    ax.tick_params(labelsize=8)
+
+    ax.get_legend().remove()
+
+    # Labelling Axis / Title
+    plt.title(f'{title} Seasonality of Temperature')
+    plt.xlabel(f'Time')
+    plt.ylabel(f'{var_name.title()}(°C)')
+
+    if 0 != roll:
+        df['rolling_avg'] = df[var_name].rolling(int(48 * roll)).mean()
+        sns.lineplot(x=df.index,
+                     y='rolling_avg',
+                     data=df,
+                     label=f'Rolling {roll} day avg')
+
+    if 0 != highlight:
+        plt.axvspan(highlight[0], highlight[1], facecolor='red', alpha=0.1,
+                    hatch='/', edgecolor='black', linewidth=3)
+    return None
+
+
+def lag_plot(df, var_name='TOTALDEMAND', hue='season', lag=1, color_map='viridis', legend_title='legend'):
+    # Generates a scatterplot lag plot
+
+    # Main Scatter Plot
+    for group in df[hue].unique():
+        df_grouped = df[df[hue] == group]
+        plt.scatter(df_grouped[var_name], df_grouped.shift(lag)[var_name],
+                    c=color_map[group], s=20, alpha=0.7)
+
+    # Legend
+    plt.legend(title=legend_title.title(), loc='lower right', frameon=True,
+               labels=df[hue].unique())
+
+    # Labelling Axis / Title
+    plt.grid(True)  # Grid
+    plt.xlabel(f'{var_name.title()}(i)')
+    plt.ylabel(f'{var_name.title()}(i+{str(lag)})')
+    plt.title(
+        f'Lag {lag} Plot: Relationship of lagged version of {var_name.title()}')
+
+    # Axis Limits
+    plt.xlim(min(df[var_name].min(), df.shift(lag)[var_name].min()),
+             max(df[var_name].max(), df.shift(lag)[var_name].max()))
+    plt.ylim(min(df[var_name].min(), df.shift(lag)[var_name].min()),
+             max(df[var_name].max(), df.shift(lag)[var_name].max()))
+
+    # correlation Value Display
+    plt.text(df[var_name].min() + 0.08 * df[var_name].min(),
+             df[var_name].max() - 0.08 * df[var_name].max(),
+             f'r={df[var_name].corr(df.shift(lag)[var_name]):.2f}', va='top',
+             ha='left', fontsize=15,
+             bbox=dict(facecolor='white', edgecolor='black', boxstyle='round',
+                       pad=0.5))
+
+    # adding line Y=X
+    plt.axline((0, 0), slope=1, color='black', linestyle='--')
+    return None
 
 
 def normalize_columns(df, column_mapping):
