@@ -12,6 +12,11 @@ modelling_notebook.ipynb:
 - main code for each model is in the individual package subdirectories
 - we just call the model to either train or predict from the notebook
 
+# Model files
+- most model checkpoints are saved to github.
+- Prophet's trained model is too large at >120mb. I have zipped it. 
+- It needs to be unzipped to be loaded for inference
+
 Historic Files:
 - prophet_model.py is a single file version of the model and inference
 - XGBoost single file
