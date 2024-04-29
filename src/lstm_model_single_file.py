@@ -34,15 +34,15 @@ class LstmCFG:
     model_path = '../trained_models'
     version = 37  # increment for each training run
     model_name = f'lstm_trained_model_v{version}'
-    logging = False
+    logging = True
     train = True
     seed = 42
-    n_folds = 2
-    epochs = 2
-    n_features = 33
-    input_size = 33
-    num_layers = 1
-    hidden_units = 50
+    n_folds = 5
+    epochs = 5
+    n_features = 97
+    input_size = 97
+    num_layers = 2
+    hidden_units = 1
     output_size = 1
     batch_size = 1024
     seq_length = 336  # 336 one week of 30-minute sample intervals
@@ -60,7 +60,9 @@ max_values = {
     'dow': 7,
     'doy': 365,  # todo: 366 for leap years to be more precise
     'month': 12,
-    'quarter': 4
+    'quarter': 4,
+    'week_of_year': 52,
+    'minutes_past_midnight': 1439
 }
 
 column_mapping = {
@@ -86,6 +88,19 @@ input_features = [
         'dow_sin',
         'dow_cos'
     ]
+
+continuous_features = [
+        'TOTALDEMAND', 'FORECASTDEMAND', 'TEMPERATURE', 'rrp',
+        'daily_avg_actual', 'daily_avg_forecast', 'forecast_error',
+        'smoothed_forecast_demand', 'smoothed_total_demand',
+        'smoothed_temperature'
+    ]
+
+cyclical_features = ['hour', 'dow', 'doy', 'month', 'quarter',
+                     'week_of_year', 'minutes_past_midnight']
+
+categorical_features = ['day_of_month', 'is_weekend', 'part_of_day',
+                        'season', 'is_business_day', 'season_name', 'year']
 
 wandb_config = {
             "n_folds": LstmCFG.n_folds,
@@ -148,10 +163,14 @@ class DemandDataset(Dataset):
         sequence_tensor = torch.tensor(sequence.values, dtype=torch.float32)
         label_tensor = torch.tensor(labels, dtype=torch.float32).view(-1, 1)  # reshape to [forecast_horizon, 1]
 
+        # Debug print statements to check tensor shapes
+        # print(f"Sequence index: {index}")
+        # print(f"Sequence shape: {sequence_tensor.shape}, Label shape: {label_tensor.shape}")
+        # print(f"First few entries of sequence tensor: {sequence_tensor[:5]}")  # Adjust as needed for visibility
+        # print(f"First few entries of label tensor: {label_tensor[:5]}")  # Adjust as needed for visibility
+
         return sequence_tensor, label_tensor
 
-
-import torch.nn as nn
 
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_layer_size, output_size, dropout, num_layers):
@@ -160,35 +179,21 @@ class LSTMModel(nn.Module):
             input_size=input_size,
             hidden_size=hidden_layer_size,
             num_layers=num_layers,
-            dropout=dropout,  # Ensure dropout is used only if num_layers > 1
+            dropout=dropout,  # dropout is used if num_layers > 1
             batch_first=True,
-            bidirectional=True)
+            bidirectional=False)
         self.dropout = nn.Dropout(dropout)
-        # Adjust the input features to linear layer according to bidirectional LSTM
-        self.linear = nn.Linear(2 * hidden_layer_size, output_size)  # Assumes output from LSTM is 2*hidden_layer_size
-        self.tanh = nn.Tanh()
+        # apply linear layer to each time step output from LSTM
+        self.linear = nn.Linear(hidden_layer_size, output_size)
 
     def forward(self, x):
-        # Flatten parameters at the beginning of forward pass
-        self.lstm.flatten_parameters()
-        print(f"Input shape to LSTM: {x.shape}")  # debugging line
+        # print(f"Input shape to LSTM: {x.shape}")  # Include dtype and device in debug
         x, _ = self.lstm(x)
-        print(f"Output shape from LSTM: {x.shape}")  # Should be [batch, seq_len, num_directions * hidden_size]
-        print(f"LSTM Output Stats - Min: {x.min()}, Max: {x.max()}, Mean: {x.mean()}")  # debugging line
-        print(f"Output shape from LSTM: {x.shape}")  # debugging line
+        # print(f"Output shape from LSTM: {x.shape}")  # should be [batch, seq_len, num_directions * hidden_size]
         x = self.dropout(x)
-
-        # Ensure that the tensor is correctly shaped for the linear layer
-        # For example, if your linear layer expects a flattened output from the LSTM:
-        x = x.contiguous().view(x.size(0), -1)  # Reshape from [batch, seq_len, features] to [batch, seq_len * features]
-        print(f"Shape before linear layer: {x.shape}")
-        # Apply linear transformation to each time step
-        x = self.linear(x)
-        print(f"Linear Output Stats - Min: {x.min()}, Max: {x.max()}, Mean: {x.mean()}")  # debugging line
-        print(f"Shape after linear layer: {x.shape}")  # debugging line
-        x = self.tanh(x)
-        print(f"Tanh Output Stats - Min: {x.min()}, Max: {x.max()}, Mean: {x.mean()}")  # debugging line
-        print(f"Final output shape: {x.shape}")  # debugging line
+        x = self.linear(x)  # Apply linear to each timestep
+        # print(f"Linear Output Stats - Min: {x.min()}, Max: {x.max()}, Mean: {x.mean()}")  # debugging line
+        # print(f"Shape after linear layer: {x.shape}")  # debugging line
         return x
 
 
@@ -270,9 +275,14 @@ def preprocess_data(path, cutoff_days_test=14, cutoff_days_val=28):
     nsw_df = pd.read_parquet(path)
     nsw_df.dropna(inplace=True)
 
-    # one-hot encoding of categorical variables
-    nsw_df = pd.get_dummies(nsw_df, columns=['part_of_day', 'season_name'])
+    # apply cyclical encoding first
+    for col in cyclical_features:
+        nsw_df = encode_cyclical_features(nsw_df, col, max_values[col])
 
+    # apply one-hot encoding second
+    nsw_df = pd.get_dummies(nsw_df, columns=categorical_features)
+
+    # define cutoff dates
     cutoff_date1 = nsw_df.index.max() - pd.Timedelta(days=cutoff_days_test)
     cutoff_date2 = nsw_df.index.max() - pd.Timedelta(days=cutoff_days_val)
 
@@ -281,44 +291,52 @@ def preprocess_data(path, cutoff_days_test=14, cutoff_days_val=28):
     test_df = nsw_df[(nsw_df.index > cutoff_date2) & (nsw_df.index <= cutoff_date1)].copy()
     val_df = nsw_df[nsw_df.index > cutoff_date1].copy()
 
+    # normalise continuous features using MinMax
     scaler = MinMaxScaler(feature_range=(0, 1))
-    if 'TOTALDEMAND' in train_df:
-        train_df['TOTALDEMAND_scaled'] = scaler.fit_transform(train_df[['TOTALDEMAND']])
-        test_df['TOTALDEMAND_scaled'] = scaler.transform(test_df[['TOTALDEMAND']])
-        val_df['TOTALDEMAND_scaled'] = scaler.transform(val_df[['TOTALDEMAND']])
+    train_df[continuous_features] = scaler.fit_transform(train_df[continuous_features])
+    test_df[continuous_features] = scaler.transform(test_df[continuous_features])
+    val_df[continuous_features] = scaler.transform(val_df[continuous_features])
 
-    # additional normalization
+    # print("Number of features after one-hot encoding:", len(train_df.columns))  # debugging line
+
+    # additional normalization  CHECK THIS
     train_df, _ = normalize_columns(train_df, column_mapping)
     test_df, _ = normalize_columns(test_df, column_mapping)
     val_df, _ = normalize_columns(val_df, column_mapping)
 
-    # cyclical encoding
-    for col, max_val in max_values.items():
-        train_df = encode_cyclical_features(train_df, col, max_val)
-        test_df = encode_cyclical_features(test_df, col, max_val)
-        val_df = encode_cyclical_features(val_df, col, max_val)
+    # print(train_df.columns)
+    # print("Feature range after scaling (min, max):",
+    #       train_df['TOTALDEMAND'].min(),
+    #       train_df['TOTALDEMAND'].max())
 
-    # create datasets
+    # create train dataset
     train_dataset = DemandDataset(
         train_df,
-        'TOTALDEMAND_scaled',
+        'TOTALDEMAND',
         sequence_length=LstmCFG.seq_length
     )
 
+    # test dataset
     test_dataset = DemandDataset(
         test_df,
-        'TOTALDEMAND_scaled',
+        'TOTALDEMAND',
         sequence_length=LstmCFG.seq_length
     )
 
+    # validation dataset
     val_dataset = DemandDataset(
         val_df,
-        'TOTALDEMAND_scaled',
+        'TOTALDEMAND',
         sequence_length=LstmCFG.seq_length,
         forecast_horizon=336
     )
-
     return train_dataset, test_dataset, val_dataset
+
+
+def encode_day_of_month(df, date_column='date'):
+    df['day_of_month_sin'] = np.sin(2 * np.pi * df[date_column].dt.day / df[date_column].dt.days_in_month)
+    df['day_of_month_cos'] = np.cos(2 * np.pi * df[date_column].dt.day / df[date_column].dt.days_in_month)
+    return df
 
 
 def encode_cyclical_features(df, column, max_value, inplace=True):
@@ -381,15 +399,13 @@ def set_seed(seed_value=42):
     torch.backends.cudnn.benchmark = False
 
 
-
-
-
 def train_model(train_df, test_df, input_features, label_col, CFG):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    set_seed(CFG.seed)  # Ensures reproducibility
+    print(device)
+    set_seed(CFG.seed)  # ensure reproducibility
 
     if CFG.train:
-        # Initialize Weights & Biases if logging is enabled
+        # initialize W&B if logging is enabled
         if CFG.logging:
             wandb.init(
                 project=CFG.wandb_project_name,
@@ -398,55 +414,69 @@ def train_model(train_df, test_df, input_features, label_col, CFG):
                 job_type='train_model'
             )
 
-        # Prepare data using Time Series Split
+        # prepare data using Time Series Split
         tscv = TimeSeriesSplit(n_splits=CFG.n_folds)
         all_folds_test_losses = []
         all_folds_train_losses = []
         avg_test_loss = []
         training_loss = []
+
+        # train data loader
         train_loader = DataLoader(
             train_dataset,
             batch_size=CFG.batch_size,
-            shuffle=True
+            shuffle=True,
+            drop_last=True
         )
+
+        # test data loader
         test_loader = DataLoader(
             test_dataset,
             batch_size=CFG.batch_size,
             shuffle=False
         )
+
         # initialize the LSTM model
         model = LSTMModel(
-            input_size=len(input_features),
+            input_size=CFG.input_size,
             hidden_layer_size=CFG.hidden_units,
-            output_size=1,
-            dropout=CFG.dropout,
-            num_layers=CFG.num_layers
+            output_size=CFG.output_size,
+            num_layers=CFG.num_layers,
+            dropout=CFG.dropout
         ).to(device)
 
+        # initialise optimiser
         optimizer = optim.Adam(
             model.parameters(),
             lr=CFG.lr,
             weight_decay=CFG.weight_decay
         )
 
+        # initialise lr_scheduler
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer,
             step_size=CFG.lrs_step_size,
             gamma=CFG.lrs_gamma
         )
+
+        # loss function MSE
         loss_function = nn.L1Loss()
 
+        # initialise early stopping
         early_stopping = EarlyStopping(
             patience=CFG.patience,
             verbose=True,
             path=f'{CFG.model_path}/{CFG.model_name}.pth'
         )
 
-        # Training loop for the current fold
-        for epoch in range(CFG.epochs):
+        # training loop for the current fold
+        fold = 0
+        # for fold in range(CFG.n_folds):
+        for epoch in tqdm(range(CFG.epochs), desc='epoch: '):
             model.train()
             training_loss = 0
             for sequences, labels in train_loader:
+                # print(f"Batch shape: {sequences.shape}")  # debugging line
                 sequences, labels = sequences.to(device), labels.to(device)
                 optimizer.zero_grad()
                 predictions = model(sequences)
@@ -466,19 +496,20 @@ def train_model(train_df, test_df, input_features, label_col, CFG):
                     total_test_loss += test_loss.item()
 
             # early stopping and logging
-            avg_test_loss = total_test_loss / len(val_loader)
+            avg_test_loss = total_test_loss / len(test_loader)
             early_stopping(avg_test_loss, model)
             if early_stopping.early_stop:
                 print("Early stopping triggered")
                 break
 
-            # Log training and validation results
+            # log training and validation results
             if CFG.logging:
                 wandb.log({
                     "epoch": epoch,
                     "training loss": training_loss / len(train_loader),
                     "validation loss": avg_test_loss
                 })
+            fold += 1
 
         # Save model and log final metrics for fold
         torch.save(model.state_dict(), f'model_fold_{fold}.pth')
@@ -510,12 +541,16 @@ if __name__ == "__main__":
     train_dataset, test_dataset, val_dataset = preprocess_data(path)
 
     # define the label column
-    label_col = 'normalised_total_demand'
+    label_col = 'TOTAL_DEMAND'
 
     # train model
     if LstmCFG.train:
         train_model(train_dataset, test_dataset, input_features, label_col, LstmCFG())
 
+# todo: apply lr scheduler,
+#  complete mew model training,
+#  make predictions from new model
+#  wandb sweeps to optimise hyperparameters
 #############################################################################
 # Training
 #############################################################################
@@ -735,8 +770,6 @@ if __name__ == "__main__":
 #         # Save scalers after training
 #         gc.collect()
 #         torch.cuda.empty_cache()
-
-    # todo: wandb sweeps to optimise hyperparameters
     # todo: ensemble
 
 ###############################################################################
