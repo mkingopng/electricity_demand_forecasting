@@ -11,6 +11,7 @@ class LstmCFG:
     data_path = '../../data/NSW'
     image_path = '../../images'
     logging = True
+    train = False
     version = 26
     n_folds = 10
     epochs = 30
@@ -26,34 +27,79 @@ class LstmCFG:
     weight_decay = 0.00001
     lrs_step_size = 6
     lrs_gamma = 0.4
-    train = True
-    input_features = [
-        'normalised_total_demand',
-        'normalised_forecast_demand',
-        'normalised_temperature',
-        'normalised_rrp',
-        'normalised_forecast_error',
-        'normalised_smoothed_forecast_demand',
-        'hour_sin',
-        'hour_cos',
-        'dow_sin',
-        'dow_cos'
+    target_feature = 'TOTALDEMAND'
+    input_features = [  # 25
+        'TOTALDEMAND',  # continuous
+        'FORECASTDEMAND',  # continuous
+        'TEMPERATURE',  # continuous
+        'rrp',  # continuous
+        'daily_avg_actual',  # continuous
+        'daily_avg_forecast',  # continuous
+        'forecast_error',  # continuous
+        'smoothed_forecast_demand',  # continuous
+        'year',  # cyclical
+        'quarter',  # cyclical
+        'month',  # cyclical
+        'week_of_year',  # cyclical
+        'dow',  # cyclical
+        'doy',  # cyclical
+        'day_of_month',  # cyclical
+        'hour',  # cyclical
+        'is_weekend',  # boolean, categorical
+        'part_of_day',  # categorical
+        'season',  # categorical
+        'is_business_day',  # boolean, categorical
+        'smoothed_total_demand',  # continuous
+        'smoothed_temperature',  # continuous
+        'minutes_past_midnight',  # cyclical
+        'season_name'  # categorical
     ]
-    max_values = {
-        'hour': 24,
+    continuous_features = [  # 10
+        'TOTALDEMAND',
+        'FORECASTDEMAND',
+        'TEMPERATURE',
+        'rrp',
+        'daily_avg_actual',
+        'daily_avg_forecast',
+        'forecast_error',
+        'smoothed_forecast_demand',
+        'smoothed_total_demand',
+        'smoothed_temperature'
+    ]
+    cyclical_features = [  # 9
+        'hour',
+        'dow',
+        'doy',
+        'month',
+        'quarter',
+        'week_of_year',
+        'minutes_past_midnight'
+    ]
+    categorical_features = [  # 5
+        'is_weekend',
+        'part_of_day',
+        'season',
+        'is_business_day',
+        'season_name'
+    ]
+    max_values = {  # define the maximum values for each cyclical feature
+        'year': 2021,
+        'quarter': 4,
+        'month': 12,
+        'week_of_year': 52,
         'dow': 7,
         'doy': 365,  # todo: 366 for leap years to be more precise
-        'month': 12,
-        'quarter': 4
+        'day_of_month': 31,
+        'hour': 24,
+        'minutes_past_midnight': 1439
     }
-    column_mapping = {
-        'TOTALDEMAND': 'normalised_total_demand',
-        'FORECASTDEMAND': 'normalised_forecast_demand',
-        'TEMPERATURE': 'normalised_temperature',
-        'rrp': 'normalised_rrp',
-        'forecast_error': 'normalised_forecast_error',
-        'smoothed_forecast_demand': 'normalised_smoothed_forecast_demand',
-        'smoothed_total_demand': 'normalised_smoothed_total_demand',
-        'smoothed_temperature': 'normalised_smoothed_temperature',
-    }
-
+    # column_mapping = {
+    #     'TOTALDEMAND': 'normalised_total_demand',
+    #     'FORECASTDEMAND': 'normalised_forecast_demand',
+    #     'TEMPERATURE': 'normalised_temperature',
+    #     'rrp': 'normalised_rrp',
+    #     'forecast_error': 'normalised_forecast_error',
+    #     'smoothed_forecast_demand': 'normalised_smoothed_forecast_demand',
+    #     'smoothed_total_demand': 'normalised_smoothed_total_demand',
+    #     'smoothed_temperature': 'normalised_smoothed_temperature',
+    # }
