@@ -65,7 +65,7 @@ def log_evaluation(period=1, show_stdv=True):
 
 def make_prediction(model, dtest):
     """
-    Make predictions using the trained XGBoost model.
+    make predictions using the trained XGBoost model
     """
     predictions = model.predict(dtest)
     return predictions
@@ -120,9 +120,10 @@ def initialize_wandb():
     else:
         return None
 
+
 def train_and_evaluate_model(dtrain, dtest, params):
     """
-    Train the XGBoost model and evaluate it.
+    train the XGBoost model and evaluate it
     """
     callbacks = [WandbCallback()] if CFG.logging else []
     model = xgb.train(
@@ -145,14 +146,14 @@ def train_and_evaluate_model(dtrain, dtest, params):
 
 def save_model(model):
     """
-    Save the trained model to a specified path.
+    save the trained model to a specified path
     """
     model.save_model(os.path.join(CFG.models_path, 'xgb_model.json'))
 
 
 def load_model(filepath):
     """
-    Load a saved XGBoost model from a file.
+    load a saved XGBoost model from a file
     """
     model = xgb.Booster()
     model.load_model(filepath)
@@ -161,7 +162,7 @@ def load_model(filepath):
 
 def evaluate_model(model, data, true_labels):
     """
-    Evaluate a trained model on a given dataset.
+    evaluate a trained model on a given dataset
     """
     predictions = model.predict(data)
     mae = mean_absolute_error(true_labels, predictions)

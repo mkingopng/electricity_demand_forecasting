@@ -10,7 +10,7 @@ import xgboost as xgb
 def series_to_supervised(data, n_in=1, n_out=1, dropnan=True, target_var='TOTALDEMAND'):
     """
     frame a time series dataset as a supervised learning dataset, required as
-    in input for xgb
+    in input for xgboost model
     :param data:
     :param n_in:
     :param n_out:
@@ -58,9 +58,9 @@ def train_test_split(data, n_test):
     temporal order of observations is preserved, which is crucial for time
     series forecasting.
 
-    :param data (numpy.ndarray): A 2D array of data where rows correspond to
+    :param data: (numpy.ndarray) A 2D array of data where rows correspond to
     observations and columns correspond to variables.
-    :param n_test (int): The number of observations from the end of the dataset
+    :param n_test: (int) The number of observations from the end of the dataset
     to include in the test set.
     :return tuple: A tuple where the first element is the training set as a
     numpy array and the second element is the test set as a numpy array.
@@ -76,38 +76,91 @@ def train_test_split(data, n_test):
     return data[:-n_test, :], data[-n_test:, :]
 
 
-def load_and_preprocess_data():
+def convert_categories_and_fill(df):
+    # convert categorical columns
+    categorical_columns = [col for col in df.columns if 'part_of_day' in col or 'is_weekend' in col or 'is_business_day' in col or 'season_name' in col]
+    for col in categorical_columns:
+        df[col] = df[col].astype('category').cat.codes
+
+    # convert all data to float64
+    df = df.astype(float)
+
+    # forward fill to handle NaNs after type conversion
+    df.ffill(inplace=True)
+
+    return df
+
+
+def load_train():
     """
-    Load data, preprocess it, and prepare training, testing, and validation datasets.
+    Load and preprocess training data.
     """
-    # Load data
     df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
     df.drop(columns=['daily_avg_actual', 'daily_avg_forecast'], inplace=True)
+    df = convert_categories_and_fill(df)
 
-    # Define the date range for validation and test sets
-    val_end_date = df.index.max()  # most recent date
-    val_start_date = val_end_date - pd.Timedelta(days=7)
-    test_end_date = val_start_date - pd.Timedelta(minutes=30)
-    test_start_date = test_end_date - pd.Timedelta(days=7)
-
-    # Split data
-    df_val = df[df.index > val_start_date]
-    df_test = df[(df.index > test_start_date) & (df.index <= test_end_date)]
+    # define the date range for the training set
+    test_start_date = df.index.max() - pd.Timedelta(days=14)  # adjust date range appropriately
     df_train = df[df.index <= test_start_date]
 
-    # Convert to supervised format
+    # convert to supervised format
     train_supervised = series_to_supervised(df_train, n_in=CFG.n_in)
+
+    # split into inputs and outputs
+    trainX, trainy = train_supervised.iloc[:, :-1], train_supervised.iloc[:, -1]
+
+    # convert to xgb.DMatrix format
+    dtrain = xgb.DMatrix(trainX, label=trainy, enable_categorical=True)
+
+    return dtrain, trainy
+
+
+def load_test():
+    """
+    Load and preprocess test data.
+    """
+    df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
+    df.drop(columns=['daily_avg_actual', 'daily_avg_forecast'], inplace=True)
+    df = convert_categories_and_fill(df)
+
+    # define the date range for the test set
+    test_start_date = df.index.max() - pd.Timedelta(days=14)  # adjust date range appropriately
+    test_end_date = df.index.max() - pd.Timedelta(days=7)     # adjust date range appropriately
+    df_test = df[(df.index > test_start_date) & (df.index <= test_end_date)]
+
+    # convert to supervised format
     test_supervised = series_to_supervised(df_test, n_in=CFG.n_in)
+
+    # split into inputs and outputs
+    testX, testy = test_supervised.iloc[:, :-1], test_supervised.iloc[:, -1]
+
+    # convert to xgb.DMatrix format
+    dtest = xgb.DMatrix(testX, label=testy, enable_categorical=True)
+
+    return dtest, testy
+
+
+def load_val():
+    """
+    Load and preprocess validation data, return both DataFrame and DMatrix formats.
+    """
+    df = pd.read_parquet(os.path.join(CFG.data_path, 'nsw_df.parquet'))
+    df.drop(columns=['daily_avg_actual', 'daily_avg_forecast'], inplace=True)
+    df = convert_categories_and_fill(df)
+
+    # Define the date range for the validation set
+    val_end_date = df.index.max()  # Most recent date
+    val_start_date = val_end_date - pd.Timedelta(days=7)
+    df_val = df[df.index > val_start_date]
+
+    # Convert to supervised format
     val_supervised = series_to_supervised(df_val, n_in=CFG.n_in)
 
     # Split into inputs and outputs
-    trainX, trainy = train_supervised.iloc[:, :-1], train_supervised.iloc[:, -1]
-    testX, testy = test_supervised.iloc[:, :-1], test_supervised.iloc[:, -1]
     valX, valy = val_supervised.iloc[:, :-1], val_supervised.iloc[:, -1]
 
-    # Convert datasets into xgb.DMatrix format
-    dtrain = xgb.DMatrix(trainX, label=trainy)
-    dtest = xgb.DMatrix(testX, label=testy)
-    dval = xgb.DMatrix(valX, label=valy)
+    # Optionally convert to xgb.DMatrix format if needed for model evaluation
+    dval = xgb.DMatrix(valX, label=valy, enable_categorical=True)
 
-    return dtrain, dtest, dval, trainy, testy, valy, valX
+    return dval, valy, valX  # Return DataFrame for visualization and DMatrix for model evaluation
+

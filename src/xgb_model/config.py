@@ -1,8 +1,6 @@
 """
-
+Configuration file for the XGBoost model
 """
-
-
 class CFG:
     wandb_project_name = 'electricity_demand_forecasting'
     wandb_run_name = 'xgboost'
@@ -13,7 +11,7 @@ class CFG:
     logging = True  # set to True to enable W&B logging
     img_dim1 = 20
     img_dim2 = 10
-    n_in = 9  # 6 lag features
+    n_in = 9  # 9 lag features
     n_test = 336  # 7 days of 30-minute sample intervals
     version = 24  # increment for each new experiment
     sweep_count = 10  # number of sweep runs
@@ -23,7 +21,6 @@ class CFG:
         'learning_rate': 0.07984076257805875,  # def 0.1
         'max_depth': 8,
         'min_child_weight': 20,  # def 0.1
-        'nthread': 4,  # ?
         'random_state': 42,
         'subsample': 0.8836012456010794,
         'reg_alpha': 0.7863437272577511,
