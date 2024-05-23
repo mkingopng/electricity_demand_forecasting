@@ -14,7 +14,7 @@ class Visualization:
 
     def plot_data(self, df):
         """
-        Plot the total demand over time (raw data)
+        plot the total demand over time (raw data)
         """
         plt.figure(figsize=(CFG.img_dim1, CFG.img_dim2))
         plt.plot(df['ds'], df['y'], label='Total Demand')
@@ -27,7 +27,8 @@ class Visualization:
 
     def plot_total_demand_over_time(self, df):
         """
-        Plot the total demand over time (raw data)
+        plot the total demand over time (raw data)
+        isn't this a duplicate of the previous method?
         """
         plt.figure(figsize=(CFG.img_dim1, CFG.img_dim2))
         plt.plot(df['ds'], df['y'], label='Total Demand')
@@ -48,25 +49,49 @@ class Visualization:
 
     def plot_change_points(self, model, forecast):
         """
-        Plot the changepoints
+        plot the changepoints
         """
         fig = model.plot(forecast)
         add_changepoints_to_plot(fig.gca(), model, forecast)
-        plt.savefig(os.path.join(self.config.image_path, 'prophet_changepoints.png'))
+        plt.savefig(
+            os.path.join(
+                self.config.image_path,
+                'prophet_changepoints.png'
+            )
+        )
         plt.show()
 
     def plot_forecast_vs_actual(self, forecast, df_val):
         """
-        Plot the forecast vs actual values
+        plot the forecast vs actual values
         """
         plt.figure(figsize=(CFG.img_dim1, CFG.img_dim2))
-        plt.plot(forecast['ds'], forecast['yhat'], label='Forecast', color='blue')
-        plt.plot(df_val['ds'], df_val['y'], label='Actual', color='red')
+        # plot the forecast values
+        plt.plot(
+            forecast['ds'],
+            forecast['yhat'],
+            label='Forecast',
+            color='blue'
+        )
+        # plot the actual values
+        plt.plot(
+            df_val['ds'],
+            df_val['y'],
+            label='Actual',
+            color='red'
+        )
+        # other plot components
         plt.xlabel('Date')
         plt.ylabel('Total Demand')
         plt.title('Forecast vs Actual for the Test Period')
         plt.legend()
-        plt.savefig(os.path.join(self.config.image_path, 'prophet_forecast_vs_actual.png'))
+        # save the plot
+        plt.savefig(
+            os.path.join(
+                self.config.image_path,
+                'prophet_forecast_vs_actual.png'
+            )
+        )
         plt.show()
 
     def plot_components(self, model, forecast):

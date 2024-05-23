@@ -197,3 +197,4 @@ data/public_prices_consolidated.parquet
 /trained_models/trained_prophet_model.json
 /src/xgb_model/wandb/
 /src/prophet_model/wandb/
+/src/prophet_model/prophet_model/wandb/

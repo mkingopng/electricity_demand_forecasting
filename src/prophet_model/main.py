@@ -8,7 +8,7 @@ from .visualisation import Visualization
 import wandb
 
 
-# Setup configuration, data loader, model, visualizer
+# setup configuration, data loader, model, visualizer
 config = CFG()
 data_loader = DataLoader(config)
 model = ProphetModel(config)
@@ -22,7 +22,7 @@ wandb.init(
 
 
 def main(train_mode=True):
-    # Load and split data
+    # load and split data
     df = data_loader.load_data()
     df_train, df_test, df_val = data_loader.split_data(df)
 
@@ -33,7 +33,7 @@ def main(train_mode=True):
         val_mae = model.evaluate(df_val, forecast)
         print(f"Validation MAE: {val_mae}")
 
-        # Plotting inside training
+        # plotting inside training
         visualizer.plot_total_demand_over_time(df)
         visualizer.plot_cross_validation_metric(df_cv)
         visualizer.plot_forecast_vs_actual(forecast, df_val)
@@ -45,23 +45,28 @@ def main(train_mode=True):
 
 # Use this for prediction mode visualizations
 def plot_predictions(df_val):
-    # Prepare the features for prediction
+    # prepare the features for prediction
     future = df_val[[
         'ds', 'TEMPERATURE', 'FORECASTDEMAND', 'rrp',
         'smoothed_total_demand', 'smoothed_temperature',
         'smoothed_forecast_demand', 'year', 'quarter', 'month', 'dow',
         'doy', 'hour', 'season']].copy()
     forecast = model.predict(future)
-    print(forecast['yhat'])
-    print(df_val['ds'], df_val['y'])
-
-    # Call visualization methods
-    visualizer.plot_change_points(model.model, forecast)
-    visualizer.plot_forecast_vs_actual(forecast, df_val)
-    visualizer.plot_components(model.model, forecast)
+    # print(forecast['yhat'])
+    # print(df_val['ds'], df_val['y'])
+    return forecast
 
 
 if __name__ == "__main__":
-    # Decide the mode based on the configuration
-    main(train_mode=CFG.train)
+    # decide the mode based on the configuration
+    df_val = main(train_mode=CFG.train)
+
+    if not CFG.train:
+        forecast = plot_predictions(df_val)
+
+        # call visualization methods
+        visualizer.plot_total_demand_over_time(df_val)
+        visualizer.plot_forecast_vs_actual(forecast, df_val)
+        visualizer.plot_change_points(model.model, forecast)
+        visualizer.plot_components(model.model, forecast)
 
