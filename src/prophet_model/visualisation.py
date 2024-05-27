@@ -71,7 +71,7 @@ class Visualization:
             forecast['ds'],
             forecast['yhat'],
             label='Forecast',
-            color='blue'
+            color='green'
         )
         # plot the actual values
         plt.plot(
